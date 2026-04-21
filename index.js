@@ -28,44 +28,68 @@ const {
   CANAL_FEMININO
 } = process.env;
 
-// ================= DEBUG =================
-console.log("🔎 TOKEN:", TOKEN ? "OK" : "❌ ERRO");
-console.log("🔎 CANAL MASC:", CANAL_MASCULINO);
-console.log("🔎 CANAL FEM:", CANAL_FEMININO);
+// 🔐 CONFIG DE SEGURANÇA
+const USERS_PERMITIDOS = ["1174745079630549014"]; // coloca seu ID
+const CARGO_PERMITIDO = "1456655598593511539"; // opcional
+const cooldown = new Set();
 
 // ================= REGISTRAR COMANDO =================
 const commands = [
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Abrir painel de registro de uniformes")
+    .setDescription("Abrir painel de uniformes")
 ];
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
   try {
-    console.log("🔄 Registrando comandos...");
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
     console.log("✅ Comandos registrados!");
   } catch (error) {
-    console.error("❌ ERRO COMANDO:", error);
+    console.error(error);
   }
 })();
 
 // ================= BOT ONLINE =================
 client.once(Events.ClientReady, () => {
-  console.log(`🔥 Bot online como ${client.user.tag}`);
+  console.log(`🔥 Bot protegido online como ${client.user.tag}`);
 });
 
 // ================= INTERAÇÕES =================
 client.on(Events.InteractionCreate, async (interaction) => {
 
+  // 🔒 FUNÇÃO DE PERMISSÃO
+  const temPermissao = () => {
+    if (USERS_PERMITIDOS.includes(interaction.user.id)) return true;
+    if (interaction.member?.roles?.cache?.has(CARGO_PERMITIDO)) return true;
+    return false;
+  };
+
   // ===== COMANDO =====
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "painel") {
+
+      if (!temPermissao()) {
+        return interaction.reply({
+          content: "❌ Você não tem permissão!",
+          ephemeral: true
+        });
+      }
+
+      // ⏱️ COOLDOWN
+      if (cooldown.has(interaction.user.id)) {
+        return interaction.reply({
+          content: "⏳ Aguarde alguns segundos...",
+          ephemeral: true
+        });
+      }
+
+      cooldown.add(interaction.user.id);
+      setTimeout(() => cooldown.delete(interaction.user.id), 5000);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -77,8 +101,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setTitle("👕 PAINEL DE UNIFORMES")
-        .setDescription("Clique no botão para registrar um uniforme.")
-        .setColor("#0099ff"); // azul seguro
+        .setDescription("Clique para registrar uniforme.")
+        .setColor("#0099ff");
 
       await interaction.reply({
         embeds: [embed],
@@ -90,6 +114,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // ===== BOTÃO =====
   if (interaction.isButton()) {
     if (interaction.customId === "registrar") {
+
+      if (!temPermissao()) {
+        return interaction.reply({
+          content: "❌ Sem permissão!",
+          ephemeral: true
+        });
+      }
 
       const modal = new ModalBuilder()
         .setCustomId("modal_uniforme")
@@ -103,14 +134,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const codigo = new TextInputBuilder()
         .setCustomId("codigo")
-        .setLabel("Código da Roupa")
+        .setLabel("Código")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
       const tipo = new TextInputBuilder()
         .setCustomId("tipo")
         .setLabel("Masculino ou Feminino")
-        .setPlaceholder("Ex: masculino ou feminino")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
@@ -128,6 +158,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isModalSubmit()) {
     if (interaction.customId === "modal_uniforme") {
 
+      if (!temPermissao()) {
+        return interaction.reply({
+          content: "❌ Sem permissão!",
+          ephemeral: true
+        });
+      }
+
       try {
         const nome = interaction.fields.getTextInputValue("nome");
         const codigo = interaction.fields.getTextInputValue("codigo");
@@ -141,12 +178,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           canalID = CANAL_FEMININO;
         } else {
           return interaction.reply({
-            content: "❌ Digite masculino ou feminino!",
+            content: "❌ Use masculino ou feminino!",
             ephemeral: true
           });
         }
-
-        console.log("📤 Canal escolhido:", canalID);
 
         const canal = await client.channels.fetch(canalID);
 
@@ -157,7 +192,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        // 🎨 COR SEGURA (SEM BUG)
         const cor = tipo.startsWith("m") ? "#0099ff" : "#ff4da6";
 
         const embed = new EmbedBuilder()
@@ -167,24 +201,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { name: "🔢 Código", value: codigo, inline: true },
             { name: "🚻 Tipo", value: tipo, inline: true }
           )
-          .setFooter({
-            text: `Registrado por ${interaction.user.tag}`
-          })
+          .setFooter({ text: `Por ${interaction.user.tag}` })
           .setTimestamp()
           .setColor(cor);
 
         await canal.send({ embeds: [embed] });
 
         await interaction.reply({
-          content: "✅ Uniforme registrado com sucesso!",
+          content: "✅ Registrado!",
           ephemeral: true
         });
 
       } catch (err) {
-        console.error("❌ ERRO AO ENVIAR:", err);
+        console.error("❌ ERRO:", err);
 
         await interaction.reply({
-          content: "❌ Erro ao registrar uniforme!",
+          content: "❌ Falha ao registrar!",
           ephemeral: true
         });
       }
@@ -192,5 +224,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
 });
+
+// 🛡️ ANTI-CRASH GLOBAL
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
