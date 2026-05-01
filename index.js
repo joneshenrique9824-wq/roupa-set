@@ -27,38 +27,27 @@ const {
 } = process.env;
 
 /* =========================
-   🔐 CARGOS
+   🔰 CARGOS
 ========================= */
-const CARGO_MEMBRO = "1456655598396510213";
-const CARGO_LIDER = "1456655598396510215";
+const CARGO_MEMBRO = "1456655598396510213"; // PЯӨJΣƬӨ X
+const CARGO_LIDER = "1456655598396510215"; // Lider PЯӨJΣƬӨ X
 
 const cooldown = new Set();
-const cargos = {};
 
 /* =========================
-   🤖 CLIENT
+   📦 MEMÓRIA (HIERARQUIA)
+========================= */
+const cargos = {
+  LIDERANCA: [],
+  MEMBROS: []
+};
+
+/* =========================
+   🤖 BOT
 ========================= */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
-
-/* =========================
-   📜 COMANDOS
-========================= */
-const commands = [
-  new SlashCommandBuilder().setName("painel").setDescription("Abrir painel"),
-  new SlashCommandBuilder().setName("quadro").setDescription("Ver hierarquia"),
-  new SlashCommandBuilder()
-    .setName("addcargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
-  new SlashCommandBuilder()
-    .setName("removercargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true))
-];
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 /* =========================
    🔒 PERMISSÕES
@@ -70,95 +59,165 @@ const isLider = (m) =>
   m.roles.cache.has(CARGO_LIDER);
 
 /* =========================
-   🧠 HIERARQUIA
+   🧠 HIERARQUIA EMBED
 ========================= */
 function criarEmbed() {
-  const lideres = cargos["LIDERANCA"] || [];
-  const membros = cargos["MEMBROS"] || [];
 
-  const f = (l) => l.length ? l.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
+  const formatar = (lista) =>
+    lista.length
+      ? lista.map(id => `• <@${id}>`).join("\n")
+      : "• (vazio)";
 
-  return new EmbedBuilder().setColor("#2b2d31").setDescription(
+  return new EmbedBuilder()
+    .setColor("#2b2d31")
+    .setDescription(
 `👥 **𝐌𝐄𝐌𝐁𝐑𝐎𝐒 - 𝐏𝐑𝐎𝐉𝐄𝐓𝐎 𝐗**
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 👑 **𝐋𝐈𝐃𝐄𝐑𝐀𝐍𝐂̧𝐀**
-${f(lideres)}
+${formatar(cargos.LIDERANCA)}
 ━━━━━━━━━━━━━━━━━━━━━━━
 🪖 **𝐌𝐄𝐌𝐁𝐑𝐎𝐒**
-${f(membros)}
+${formatar(cargos.MEMBROS)}
+━━━━━━━━━━━━━━━━━━━━━━━
+☣️ **𝐏𝐑𝐎𝐉𝐄𝐓𝐎 𝐗**
+Unidos pela força.
+Tem nome, tem respeito.
 ━━━━━━━━━━━━━━━━━━━━━━━`
-  );
+    );
 }
+
+/* =========================
+   📜 COMANDOS
+========================= */
+const commands = [
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Abrir painel de uniformes"),
+
+  new SlashCommandBuilder()
+    .setName("quadro")
+    .setDescription("Ver hierarquia"),
+
+  new SlashCommandBuilder()
+    .setName("addcargo")
+    .setDescription("Adicionar pessoa ao cargo")
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName("removercargo")
+    .setDescription("Remover pessoa do cargo")
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true))
+];
+
+const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 /* =========================
    🚀 READY
 ========================= */
 client.once(Events.ClientReady, async () => {
-  console.log(`🔥 ${client.user.tag}`);
+  console.log(`🔥 Logado como ${client.user.tag}`);
 
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands.map(c => c.toJSON()) }
-  );
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands.map(c => c.toJSON()) }
+    );
+
+    console.log("✅ Comandos registrados!");
+  } catch (err) {
+    console.error("❌ Erro ao registrar comandos:", err);
+  }
 });
 
 /* =========================
    🎮 INTERAÇÕES
 ========================= */
-client.on(Events.InteractionCreate, async (i) => {
+client.on(Events.InteractionCreate, async (interaction) => {
 
-  if (i.isChatInputCommand()) {
+  if (!interaction.isChatInputCommand()) return;
 
-    if (i.commandName === "painel") {
+  const cargo = interaction.options.getString("cargo")?.toUpperCase();
+  const user = interaction.options.getUser("pessoa");
 
-      if (!isMembro(i.member)) return i.reply({ content: "❌ Sem permissão", ephemeral: true });
+  /* ===== PAINEL ===== */
+  if (interaction.commandName === "painel") {
 
-      if (cooldown.has(i.user.id))
-        return i.reply({ content: "⏳ Aguarde...", ephemeral: true });
-
-      cooldown.add(i.user.id);
-      setTimeout(() => cooldown.delete(i.user.id), 5000);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("registrar")
-          .setLabel("Registrar Uniforme")
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      return i.reply({
-        embeds: [new EmbedBuilder().setTitle("PAINEL").setColor("#0099ff")],
-        components: [row]
-      });
+    if (!isMembro(interaction.member)) {
+      return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
     }
 
-    if (i.commandName === "quadro") {
-      if (!isMembro(i.member)) return i.reply({ content: "❌ Sem permissão", ephemeral: true });
-      return i.reply({ embeds: [criarEmbed()] });
+    if (cooldown.has(interaction.user.id)) {
+      return interaction.reply({ content: "⏳ Aguarde...", ephemeral: true });
     }
 
-    const cargo = i.options.getString("cargo").toUpperCase();
-    const user = i.options.getUser("pessoa");
+    cooldown.add(interaction.user.id);
+    setTimeout(() => cooldown.delete(interaction.user.id), 5000);
 
-    if (!isLider(i.member))
-      return i.reply({ content: "❌ Só líder", ephemeral: true });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("registrar")
+        .setLabel("Registrar Uniforme")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return interaction.reply({
+      embeds: [new EmbedBuilder().setTitle("👕 PAINEL").setColor("#0099ff")],
+      components: [row]
+    });
+  }
+
+  /* ===== QUADRO ===== */
+  if (interaction.commandName === "quadro") {
+    if (!isMembro(interaction.member)) {
+      return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
+    }
+
+    return interaction.reply({ embeds: [criarEmbed()] });
+  }
+
+  /* ===== ADD CARGO ===== */
+  if (interaction.commandName === "addcargo") {
+
+    if (!isLider(interaction.member)) {
+      return interaction.reply({ content: "❌ Só líder pode", ephemeral: true });
+    }
 
     if (!cargos[cargo]) cargos[cargo] = [];
+    if (!cargos[cargo].includes(user.id)) cargos[cargo].push(user.id);
 
-    if (i.commandName === "addcargo") {
-      if (!cargos[cargo].includes(user.id)) cargos[cargo].push(user.id);
-      return i.reply({ content: "✅ Adicionado", ephemeral: true });
+    return interaction.reply({
+      content: `✅ ${user} adicionado em ${cargo}`,
+      ephemeral: true
+    });
+  }
+
+  /* ===== REMOVER CARGO ===== */
+  if (interaction.commandName === "removercargo") {
+
+    if (!isLider(interaction.member)) {
+      return interaction.reply({ content: "❌ Só líder pode", ephemeral: true });
     }
 
-    if (i.commandName === "removercargo") {
-      cargos[cargo] = cargos[cargo].filter(id => id !== user.id);
-      return i.reply({ content: "❌ Removido", ephemeral: true });
+    if (!cargos[cargo]) {
+      return interaction.reply({ content: "❌ Cargo inválido", ephemeral: true });
     }
+
+    cargos[cargo] = cargos[cargo].filter(id => id !== user.id);
+
+    return interaction.reply({
+      content: `❌ ${user} removido de ${cargo}`,
+      ephemeral: true
+    });
   }
 
 });
 
+/* =========================
+   🛡️ ANTI CRASH
+========================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
