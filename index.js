@@ -30,9 +30,9 @@ const {
    🔰 CARGOS
 ========================= */
 
-// FIX: sem duplicação e com fallback seguro
 const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "1456655598396510213";
 const CARGO_LIDER = process.env.CARGO_LIDER || "1456655598396510215";
+const CARGO_GERENTE = process.env.CARGO_GERENTE || "1456655598530723956";
 
 const cooldown = new Set();
 
@@ -43,6 +43,8 @@ const cargos = {
   LIDERANCA: [],
   MEMBROS: []
 };
+
+const cargosValidos = ["LIDERANCA", "MEMBROS"];
 
 /* =========================
    🤖 BOT
@@ -55,13 +57,16 @@ const client = new Client({
    🔒 PERMISSÕES
 ========================= */
 const isMembro = (m) =>
-  m.roles.cache.has(CARGO_MEMBRO) || m.roles.cache.has(CARGO_LIDER);
+  m.roles.cache.has(CARGO_MEMBRO) ||
+  m.roles.cache.has(CARGO_LIDER) ||
+  m.roles.cache.has(CARGO_GERENTE);
 
-const isLider = (m) =>
-  m.roles.cache.has(CARGO_LIDER);
+const isAdmin = (m) =>
+  m.roles.cache.has(CARGO_LIDER) ||
+  m.roles.cache.has(CARGO_GERENTE);
 
 /* =========================
-   🧠 HIERARQUIA EMBED
+   🧠 EMBED HIERARQUIA
 ========================= */
 function criarEmbed() {
 
@@ -104,14 +109,30 @@ const commands = [
   new SlashCommandBuilder()
     .setName("addcargo")
     .setDescription("Adicionar pessoa ao cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA ou MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("removercargo")
     .setDescription("Remover pessoa do cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true))
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA ou MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    )
 ];
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -141,8 +162,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  const cargo = interaction.options.getString("cargo")?.toUpperCase();
+  const cargoRaw = interaction.options.getString("cargo");
+  const cargo = cargoRaw?.toUpperCase();
   const user = interaction.options.getUser("pessoa");
+
+  /* ===== VALIDAÇÃO SEGURA ===== */
+  if (interaction.commandName === "addcargo" || interaction.commandName === "removercargo") {
+    if (!cargosValidos.includes(cargo)) {
+      return interaction.reply({
+        content: "❌ Cargo inválido! Use: LIDERANCA ou MEMBROS",
+        ephemeral: true
+      });
+    }
+  }
 
   /* ===== PAINEL ===== */
   if (interaction.commandName === "painel") {
@@ -183,12 +215,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   /* ===== ADD CARGO ===== */
   if (interaction.commandName === "addcargo") {
 
-    if (!isLider(interaction.member)) {
-      return interaction.reply({ content: "❌ Só líder pode", ephemeral: true });
+    if (!isAdmin(interaction.member)) {
+      return interaction.reply({ content: "❌ Só líder/gerente pode", ephemeral: true });
     }
 
-    if (!cargos[cargo]) cargos[cargo] = [];
-    if (!cargos[cargo].includes(user.id)) cargos[cargo].push(user.id);
+    if (!cargos[cargo].includes(user.id)) {
+      cargos[cargo].push(user.id);
+    }
 
     return interaction.reply({
       content: `✅ ${user} adicionado em ${cargo}`,
@@ -199,12 +232,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   /* ===== REMOVER CARGO ===== */
   if (interaction.commandName === "removercargo") {
 
-    if (!isLider(interaction.member)) {
-      return interaction.reply({ content: "❌ Só líder pode", ephemeral: true });
-    }
-
-    if (!cargos[cargo]) {
-      return interaction.reply({ content: "❌ Cargo inválido", ephemeral: true });
+    if (!isAdmin(interaction.member)) {
+      return interaction.reply({ content: "❌ Só líder/gerente pode", ephemeral: true });
     }
 
     cargos[cargo] = cargos[cargo].filter(id => id !== user.id);
