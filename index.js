@@ -31,6 +31,8 @@ const {
 ========================= */
 const CARGO_MEMBRO = "1456655598396510213"; // PЯӨJΣƬӨ X
 const CARGO_LIDER = "1456655598396510215"; // Lider PЯӨJΣƬӨ X
+const CARGO_MEMBRO = process.env.CARGO_MEMBRO;
+const CARGO_LIDER = process.env.CARGO_LIDER;
 
 const cooldown = new Set();
 
