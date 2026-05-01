@@ -41,10 +41,11 @@ const cooldown = new Set();
 ========================= */
 const cargos = {
   LIDERANCA: [],
+  GERENTE: [],
   MEMBROS: []
 };
 
-const cargosValidos = ["LIDERANCA", "MEMBROS"];
+const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
 
 /* =========================
    🤖 BOT
@@ -84,6 +85,9 @@ function criarEmbed() {
 👑 **𝐋𝐈𝐃𝐄𝐑𝐀𝐍𝐂̧𝐀**
 ${formatar(cargos.LIDERANCA)}
 ━━━━━━━━━━━━━━━━━━━━━━━
+👔 **𝐆𝐄𝐑𝐄𝐍𝐓𝐄**
+${formatar(cargos.GERENTE)}
+━━━━━━━━━━━━━━━━━━━━━━━
 🪖 **𝐌𝐄𝐌𝐁𝐑𝐎𝐒**
 ${formatar(cargos.MEMBROS)}
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -111,7 +115,7 @@ const commands = [
     .setDescription("Adicionar pessoa ao cargo")
     .addStringOption(o =>
       o.setName("cargo")
-        .setDescription("LIDERANCA ou MEMBROS")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
         .setRequired(true)
     )
     .addUserOption(o =>
@@ -125,7 +129,7 @@ const commands = [
     .setDescription("Remover pessoa do cargo")
     .addStringOption(o =>
       o.setName("cargo")
-        .setDescription("LIDERANCA ou MEMBROS")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
         .setRequired(true)
     )
     .addUserOption(o =>
@@ -156,21 +160,58 @@ client.once(Events.ClientReady, async () => {
 });
 
 /* =========================
-   🎮 INTERAÇÕES
+   🎮 BOTÕES (PAINEL FUNCIONANDO)
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
+  /* ===== BOTÃO ===== */
+  if (interaction.isButton()) {
+
+    if (interaction.customId === "registrar") {
+
+      const modal = new ModalBuilder()
+        .setCustomId("uniforme_modal")
+        .setTitle("Registrar Uniforme");
+
+      const input = new TextInputBuilder()
+        .setCustomId("uniforme")
+        .setLabel("Descreva seu uniforme")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+      const row = new ActionRowBuilder().addComponents(input);
+      modal.addComponents(row);
+
+      return interaction.showModal(modal);
+    }
+  }
+
+  /* ===== MODAL ===== */
+  if (interaction.isModalSubmit()) {
+
+    if (interaction.customId === "uniforme_modal") {
+
+      const texto = interaction.fields.getTextInputValue("uniforme");
+
+      return interaction.reply({
+        content: `✅ Uniforme registrado: ${texto}`,
+        ephemeral: true
+      });
+    }
+  }
+
+  /* ===== COMANDOS ===== */
   if (!interaction.isChatInputCommand()) return;
 
   const cargoRaw = interaction.options.getString("cargo");
   const cargo = cargoRaw?.toUpperCase();
   const user = interaction.options.getUser("pessoa");
 
-  /* ===== VALIDAÇÃO SEGURA ===== */
+  /* ===== VALIDAÇÃO ===== */
   if (interaction.commandName === "addcargo" || interaction.commandName === "removercargo") {
     if (!cargosValidos.includes(cargo)) {
       return interaction.reply({
-        content: "❌ Cargo inválido! Use: LIDERANCA ou MEMBROS",
+        content: "❌ Cargo inválido! Use: LIDERANCA / GERENTE / MEMBROS",
         ephemeral: true
       });
     }
@@ -205,6 +246,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   /* ===== QUADRO ===== */
   if (interaction.commandName === "quadro") {
+
     if (!isMembro(interaction.member)) {
       return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
     }
@@ -243,7 +285,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ephemeral: true
     });
   }
-
 });
 
 /* =========================
