@@ -1,5 +1,4 @@
 import "dotenv/config";
-import express from "express";
 import {
   Client,
   GatewayIntentBits,
@@ -15,13 +14,6 @@ import {
   SlashCommandBuilder,
   Events
 } from "discord.js";
-
-/* =========================
-   🌐 KEEP ALIVE
-========================= */
-const app = express();
-app.get("/", (_, res) => res.send("Bot online 🔥"));
-app.listen(3000, () => console.log("🌐 Web server ativo"));
 
 /* =========================
    🔐 CONFIG
@@ -41,10 +33,6 @@ const CARGO_MEMBRO = "1456655598396510213";
 const CARGO_LIDER = "1456655598396510215";
 
 const cooldown = new Set();
-
-/* =========================
-   📦 BANCO
-========================= */
 const cargos = {};
 
 /* =========================
@@ -58,33 +46,16 @@ const client = new Client({
    📜 COMANDOS
 ========================= */
 const commands = [
-  new SlashCommandBuilder()
-    .setName("painel")
-    .setDescription("Abrir painel de uniformes"),
-
-  new SlashCommandBuilder()
-    .setName("quadro")
-    .setDescription("Ver hierarquia"),
-
+  new SlashCommandBuilder().setName("painel").setDescription("Abrir painel"),
+  new SlashCommandBuilder().setName("quadro").setDescription("Ver hierarquia"),
   new SlashCommandBuilder()
     .setName("addcargo")
-    .setDescription("Adicionar pessoa")
-    .addStringOption(o =>
-      o.setName("cargo").setDescription("LIDERANCA ou MEMBROS").setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa").setDescription("Usuário").setRequired(true)
-    ),
-
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true)),
   new SlashCommandBuilder()
     .setName("removercargo")
-    .setDescription("Remover pessoa")
-    .addStringOption(o =>
-      o.setName("cargo").setDescription("LIDERANCA ou MEMBROS").setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa").setDescription("Usuário").setRequired(true)
-    )
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true))
 ];
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -92,16 +63,11 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 /* =========================
    🔒 PERMISSÕES
 ========================= */
-function isMembro(member) {
-  return (
-    member.roles.cache.has(CARGO_MEMBRO) ||
-    member.roles.cache.has(CARGO_LIDER)
-  );
-}
+const isMembro = (m) =>
+  m.roles.cache.has(CARGO_MEMBRO) || m.roles.cache.has(CARGO_LIDER);
 
-function isLider(member) {
-  return member.roles.cache.has(CARGO_LIDER);
-}
+const isLider = (m) =>
+  m.roles.cache.has(CARGO_LIDER);
 
 /* =========================
    🧠 HIERARQUIA
@@ -110,28 +76,19 @@ function criarEmbed() {
   const lideres = cargos["LIDERANCA"] || [];
   const membros = cargos["MEMBROS"] || [];
 
-  const formatar = (lista) =>
-    lista.length
-      ? lista.map(id => `• <@${id}>`).join("\n")
-      : "• (vazio)";
+  const f = (l) => l.length ? l.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
 
-  return new EmbedBuilder()
-    .setColor("#2b2d31")
-    .setDescription(
+  return new EmbedBuilder().setColor("#2b2d31").setDescription(
 `👥 **𝐌𝐄𝐌𝐁𝐑𝐎𝐒 - 𝐏𝐑𝐎𝐉𝐄𝐓𝐎 𝐗**
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 👑 **𝐋𝐈𝐃𝐄𝐑𝐀𝐍𝐂̧𝐀**
-${formatar(lideres)}
+${f(lideres)}
 ━━━━━━━━━━━━━━━━━━━━━━━
 🪖 **𝐌𝐄𝐌𝐁𝐑𝐎𝐒**
-${formatar(membros)}
-━━━━━━━━━━━━━━━━━━━━━━━
-☣️ **𝐏𝐑𝐎𝐉𝐄𝐓𝐎 𝐗**
-Unidos pela força.
-Tem nome, tem respeito.
+${f(membros)}
 ━━━━━━━━━━━━━━━━━━━━━━━`
-    );
+  );
 }
 
 /* =========================
@@ -144,174 +101,64 @@ client.once(Events.ClientReady, async () => {
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands.map(c => c.toJSON()) }
   );
-
-  console.log("✅ Comandos registrados!");
 });
 
 /* =========================
    🎮 INTERAÇÕES
 ========================= */
-client.on(Events.InteractionCreate, async (interaction) => {
+client.on(Events.InteractionCreate, async (i) => {
 
-  if (interaction.isChatInputCommand()) {
+  if (i.isChatInputCommand()) {
 
-    if (interaction.commandName === "painel") {
+    if (i.commandName === "painel") {
 
-      if (!isMembro(interaction.member)) {
-        return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
-      }
+      if (!isMembro(i.member)) return i.reply({ content: "❌ Sem permissão", ephemeral: true });
 
-      if (cooldown.has(interaction.user.id)) {
-        return interaction.reply({ content: "⏳ Aguarde...", ephemeral: true });
-      }
+      if (cooldown.has(i.user.id))
+        return i.reply({ content: "⏳ Aguarde...", ephemeral: true });
 
-      cooldown.add(interaction.user.id);
-      setTimeout(() => cooldown.delete(interaction.user.id), 5000);
+      cooldown.add(i.user.id);
+      setTimeout(() => cooldown.delete(i.user.id), 5000);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("registrar")
           .setLabel("Registrar Uniforme")
-          .setEmoji("📋")
           .setStyle(ButtonStyle.Primary)
       );
 
-      const embed = new EmbedBuilder()
-        .setTitle("👕 PAINEL DE UNIFORMES")
-        .setDescription("Clique para registrar uniforme.")
-        .setColor("#0099ff");
-
-      return interaction.reply({
-        embeds: [embed],
+      return i.reply({
+        embeds: [new EmbedBuilder().setTitle("PAINEL").setColor("#0099ff")],
         components: [row]
       });
     }
 
-    if (interaction.commandName === "quadro") {
-      if (!isMembro(interaction.member)) {
-        return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
-      }
-
-      return interaction.reply({ embeds: [criarEmbed()] });
+    if (i.commandName === "quadro") {
+      if (!isMembro(i.member)) return i.reply({ content: "❌ Sem permissão", ephemeral: true });
+      return i.reply({ embeds: [criarEmbed()] });
     }
 
-    const cargo = interaction.options.getString("cargo").toUpperCase();
-    const user = interaction.options.getUser("pessoa");
+    const cargo = i.options.getString("cargo").toUpperCase();
+    const user = i.options.getUser("pessoa");
 
-    if (interaction.commandName === "addcargo") {
+    if (!isLider(i.member))
+      return i.reply({ content: "❌ Só líder", ephemeral: true });
 
-      if (!isLider(interaction.member)) {
-        return interaction.reply({ content: "❌ Apenas líder pode usar", ephemeral: true });
-      }
+    if (!cargos[cargo]) cargos[cargo] = [];
 
-      if (!cargos[cargo]) cargos[cargo] = [];
+    if (i.commandName === "addcargo") {
       if (!cargos[cargo].includes(user.id)) cargos[cargo].push(user.id);
-
-      return interaction.reply({
-        content: `✅ ${user} adicionado em ${cargo}`,
-        ephemeral: true
-      });
+      return i.reply({ content: "✅ Adicionado", ephemeral: true });
     }
 
-    if (interaction.commandName === "removercargo") {
-
-      if (!isLider(interaction.member)) {
-        return interaction.reply({ content: "❌ Apenas líder pode usar", ephemeral: true });
-      }
-
-      if (!cargos[cargo]) {
-        return interaction.reply({
-          content: "❌ Cargo não existe",
-          ephemeral: true
-        });
-      }
-
+    if (i.commandName === "removercargo") {
       cargos[cargo] = cargos[cargo].filter(id => id !== user.id);
-
-      return interaction.reply({
-        content: `❌ ${user} removido de ${cargo}`,
-        ephemeral: true
-      });
-    }
-  }
-
-  if (interaction.isButton() && interaction.customId === "registrar") {
-
-    if (!isMembro(interaction.member)) {
-      return interaction.reply({ content: "❌ Sem permissão!", ephemeral: true });
-    }
-
-    const modal = new ModalBuilder()
-      .setCustomId("modal_uniforme")
-      .setTitle("Registro de Uniforme");
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("nome").setLabel("Nome da Roupa").setStyle(TextInputStyle.Short).setRequired(true)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short).setRequired(true)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("tipo").setLabel("Masculino ou Feminino").setStyle(TextInputStyle.Short).setRequired(true)
-      )
-    );
-
-    return interaction.showModal(modal);
-  }
-
-  if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
-
-    try {
-      const nome = interaction.fields.getTextInputValue("nome");
-      const codigo = interaction.fields.getTextInputValue("codigo");
-      const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
-
-      let canalID;
-
-      if (tipo.startsWith("m")) canalID = CANAL_MASCULINO;
-      else if (tipo.startsWith("f")) canalID = CANAL_FEMININO;
-      else {
-        return interaction.reply({
-          content: "❌ Use masculino ou feminino!",
-          ephemeral: true
-        });
-      }
-
-      const canal = await client.channels.fetch(canalID);
-
-      const embed = new EmbedBuilder()
-        .setTitle("📦 UNIFORME REGISTRADO")
-        .addFields(
-          { name: "👕 Nome", value: nome, inline: true },
-          { name: "🔢 Código", value: codigo, inline: true },
-          { name: "🚻 Tipo", value: tipo, inline: true }
-        )
-        .setFooter({ text: `Por ${interaction.user.tag}` })
-        .setTimestamp()
-        .setColor(tipo.startsWith("m") ? "#0099ff" : "#ff4da6");
-
-      await canal.send({ embeds: [embed] });
-
-      return interaction.reply({
-        content: "✅ Registrado!",
-        ephemeral: true
-      });
-
-    } catch (err) {
-      console.error(err);
-      return interaction.reply({
-        content: "❌ Falha ao registrar!",
-        ephemeral: true
-      });
+      return i.reply({ content: "❌ Removido", ephemeral: true });
     }
   }
 
 });
 
-/* =========================
-   🛡️ ANTI-CRASH
-========================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
