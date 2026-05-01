@@ -21,7 +21,7 @@ import {
 ========================= */
 const app = express();
 app.get("/", (_, res) => res.send("Bot online 🔥"));
-app.listen(3000);
+app.listen(3000, () => console.log("🌐 Web server ativo"));
 
 /* =========================
    🔐 CONFIG
@@ -37,8 +37,8 @@ const {
 /* =========================
    🔐 CARGOS
 ========================= */
-const CARGO_MEMBRO = "1456655598396510213"; // PЯӨJΣƬӨ X
-const CARGO_LIDER = "1456655598396510215"; // Lider PЯӨJΣƬӨ X
+const CARGO_MEMBRO = "1456655598396510213";
+const CARGO_LIDER = "1456655598396510215";
 
 const cooldown = new Set();
 
@@ -69,14 +69,22 @@ const commands = [
   new SlashCommandBuilder()
     .setName("addcargo")
     .setDescription("Adicionar pessoa")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .addStringOption(o =>
+      o.setName("cargo").setDescription("LIDERANCA ou MEMBROS").setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa").setDescription("Usuário").setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("removercargo")
     .setDescription("Remover pessoa")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true))
+    .addStringOption(o =>
+      o.setName("cargo").setDescription("LIDERANCA ou MEMBROS").setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa").setDescription("Usuário").setRequired(true)
+    )
 ];
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -85,7 +93,10 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
    🔒 PERMISSÕES
 ========================= */
 function isMembro(member) {
-  return member.roles.cache.has(CARGO_MEMBRO) || member.roles.cache.has(CARGO_LIDER);
+  return (
+    member.roles.cache.has(CARGO_MEMBRO) ||
+    member.roles.cache.has(CARGO_LIDER)
+  );
 }
 
 function isLider(member) {
@@ -144,7 +155,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
 
-    /* ===== PAINEL (INTACTO) ===== */
     if (interaction.commandName === "painel") {
 
       if (!isMembro(interaction.member)) {
@@ -177,7 +187,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    /* ===== QUADRO ===== */
     if (interaction.commandName === "quadro") {
       if (!isMembro(interaction.member)) {
         return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
@@ -189,7 +198,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const cargo = interaction.options.getString("cargo").toUpperCase();
     const user = interaction.options.getUser("pessoa");
 
-    /* ===== ADD ===== */
     if (interaction.commandName === "addcargo") {
 
       if (!isLider(interaction.member)) {
@@ -205,7 +213,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    /* ===== REMOVE ===== */
     if (interaction.commandName === "removercargo") {
 
       if (!isLider(interaction.member)) {
@@ -228,7 +235,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  /* ===== BOTÃO (INTACTO) ===== */
   if (interaction.isButton() && interaction.customId === "registrar") {
 
     if (!isMembro(interaction.member)) {
@@ -254,7 +260,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
-  /* ===== MODAL (INTACTO) ===== */
   if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
 
     try {
