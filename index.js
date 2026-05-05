@@ -37,6 +37,7 @@ const {
   CANAL_FEMININO
 } = process.env;
 
+// 🎯 canal fixo metas
 const CANAL_METAS = "1501326790537379860";
 
 /* =========================
@@ -57,7 +58,7 @@ const cargos = {
 
 const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
 
-// 🎯 METAS
+// 🎯 metas
 const metasPlayer = {};
 const META_TOTAL = 10;
 
@@ -70,10 +71,11 @@ const cooldown = new Set();
    🔒 PERMISSÕES
 ========================= */
 const temPermissao = (interaction) => {
-  if (interaction.member?.roles?.cache?.has(CARGO_MEMBRO)) return true;
-  if (interaction.member?.roles?.cache?.has(CARGO_LIDER)) return true;
-  if (interaction.member?.roles?.cache?.has(CARGO_GERENTE)) return true;
-  return false;
+  return (
+    interaction.member?.roles?.cache?.has(CARGO_MEMBRO) ||
+    interaction.member?.roles?.cache?.has(CARGO_LIDER) ||
+    interaction.member?.roles?.cache?.has(CARGO_GERENTE)
+  );
 };
 
 const isAdmin = (interaction) => {
@@ -93,7 +95,7 @@ function criarEmbedCargos() {
   return new EmbedBuilder()
     .setColor("#2b2d31")
     .setDescription(
-`👥 **𝐇𝐈𝐄𝐑𝐀𝐑𝐐𝐔𝐈𝐀**
+`👥 **HIERARQUIA**
 
 👑 LIDERANÇA
 ${formatar(cargos.LIDERANCA)}
@@ -111,8 +113,8 @@ ${formatar(cargos.MEMBROS)}`
 ========================= */
 async function pegarOuCriarCanalPlayer(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
-  let canal = guild.channels.cache.find(c => c.name === nome);
 
+  let canal = guild.channels.cache.find(c => c.name === nome);
   if (canal) return canal;
 
   return await guild.channels.create({
@@ -125,24 +127,46 @@ async function pegarOuCriarCanalPlayer(guild, user) {
    📜 COMANDOS
 ========================= */
 const commands = [
-  new SlashCommandBuilder().setName("painel").setDescription("Uniformes"),
-  new SlashCommandBuilder().setName("quadro").setDescription("Hierarquia"),
+
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Abrir painel de uniformes"),
+
+  new SlashCommandBuilder()
+    .setName("quadro")
+    .setDescription("Ver hierarquia"),
 
   new SlashCommandBuilder()
     .setName("addcargo")
-    .setDescription("Adicionar cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .setDescription("Adicionar pessoa ao cargo")
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("removercargo")
-    .setDescription("Remover cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .setDescription("Remover pessoa do cargo")
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Painel de metas")
+    .setDescription("Painel de metas diárias")
 ];
 
 /* =========================
@@ -151,12 +175,17 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
-  console.log(`🔥 ${client.user.tag}`);
+  console.log(`🔥 Logado como ${client.user.tag}`);
 
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands.map(c => c.toJSON()) }
-  );
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands.map(c => c.toJSON()) }
+    );
+    console.log("✅ Comandos registrados!");
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 /* =========================
@@ -164,33 +193,52 @@ client.once(Events.ClientReady, async () => {
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  if (!interaction.isChatInputCommand()) return;
+  // META
+  if (interaction.isChatInputCommand() && interaction.commandName === "meta") {
 
-  if (interaction.commandName === "meta") {
+    if (!temPermissao(interaction)) {
+      return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("meta_btn")
+        .setLabel("Enviar Meta")
+        .setStyle(ButtonStyle.Success)
+    );
+
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("🎯 META DIÁRIA")
-          .setDescription("Envie print no canal de metas")
+          .setDescription(
+`📦 Requisitos:
+🛡️ 30 Kevlar
+⛏️ 200 Minério de Ferro
+
+📸 Envie a imagem no canal de metas`
+          )
+          .setColor("#00ff88")
       ],
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("meta_btn")
-            .setLabel("Enviar Meta")
-            .setStyle(ButtonStyle.Success)
-        )
-      ]
+      components: [row]
     });
   }
 
-  if (interaction.commandName === "quadro") {
+  if (interaction.isButton() && interaction.customId === "meta_btn") {
+    return interaction.reply({
+      content: "📸 Envie a imagem no canal de metas!",
+      ephemeral: true
+    });
+  }
+
+  // QUADRO
+  if (interaction.isChatInputCommand() && interaction.commandName === "quadro") {
     return interaction.reply({ embeds: [criarEmbedCargos()] });
   }
 });
 
 /* =========================
-   📸 SISTEMA DE META
+   📸 METAS AUTOMÁTICO
 ========================= */
 client.on("messageCreate", async (message) => {
 
@@ -198,7 +246,10 @@ client.on("messageCreate", async (message) => {
   if (message.channel.id !== CANAL_METAS) return;
 
   const attachment = message.attachments.first();
-  if (!attachment || !attachment.contentType?.startsWith("image")) return;
+  if (!attachment) return;
+
+  // valida imagem (corrigido)
+  if (!attachment.url.match(/\.(png|jpg|jpeg|webp|gif)/i)) return;
 
   const id = message.author.id;
 
@@ -212,6 +263,7 @@ client.on("messageCreate", async (message) => {
 
   const embed = new EmbedBuilder()
     .setTitle("✅ META REGISTRADA")
+    .setColor("#00ff00")
     .addFields(
       { name: "👤 Jogador", value: `<@${id}>`, inline: true },
       { name: "📊 Feitas", value: `${feitas}`, inline: true },
@@ -219,7 +271,7 @@ client.on("messageCreate", async (message) => {
       { name: "📦 Meta", value: "30 Kevlar\n200 Minério de Ferro" }
     )
     .setImage(attachment.url)
-    .setColor("#00ff00");
+    .setTimestamp();
 
   await canal.send({ embeds: [embed] });
 
