@@ -14,7 +14,7 @@ import {
   SlashCommandBuilder,
   Events
 } from "discord.js";
-import Tesseract from "tesseract.js";
+import vision from "@google-cloud/vision";
 
 /* =========================
    🤖 BOT
@@ -35,10 +35,18 @@ const {
   CLIENT_ID,
   GUILD_ID,
   CANAL_MASCULINO,
-  CANAL_FEMININO
+  CANAL_FEMININO,
+  GOOGLE_CREDENTIALS
 } = process.env;
 
 const CANAL_METAS = "1501326344586526820";
+
+/* =========================
+   🧠 IA GOOGLE (RAILWAY)
+========================= */
+const visionClient = new vision.ImageAnnotatorClient({
+  credentials: JSON.parse(GOOGLE_CREDENTIALS || "{}")
+});
 
 /* =========================
    👥 CARGOS
@@ -70,22 +78,12 @@ const temPermissao = (interaction) => {
   );
 };
 
-const isAdmin = (interaction) => {
-  return (
-    interaction.member?.roles?.cache?.has(CARGO_LIDER) ||
-    interaction.member?.roles?.cache?.has(CARGO_GERENTE)
-  );
-};
-
 /* =========================
    🧠 EMBED HIERARQUIA
 ========================= */
 function criarEmbedCargos() {
   const f = (l) => l.length ? l.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
-
-  return new EmbedBuilder()
-    .setColor("#2b2d31")
-    .setDescription(`
+  return new EmbedBuilder().setDescription(`
 👑 LIDERANÇA
 ${f(cargos.LIDERANCA)}
 
@@ -105,7 +103,10 @@ async function pegarOuCriarCanalPlayer(guild, user) {
   let canal = guild.channels.cache.find(c => c.name === nome);
   if (canal) return canal;
 
-  return await guild.channels.create({ name: nome, type: 0 });
+  return await guild.channels.create({
+    name: nome,
+    type: 0
+  });
 }
 
 /* =========================
@@ -115,7 +116,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Uniformes"),
+    .setDescription("Painel de uniformes"),
 
   new SlashCommandBuilder()
     .setName("quadro")
@@ -124,18 +125,34 @@ const commands = [
   new SlashCommandBuilder()
     .setName("addcargo")
     .setDescription("Adicionar cargo")
-    .addStringOption(o => o.setName("cargo").setDescription("Cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setDescription("Usuário").setRequired(true)),
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("Cargo")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("removercargo")
     .setDescription("Remover cargo")
-    .addStringOption(o => o.setName("cargo").setDescription("Cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setDescription("Usuário").setRequired(true)),
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("Cargo")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário")
+        .setRequired(true)
+    ),
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Metas automáticas com OCR")
+    .setDescription("Metas com IA")
 ];
 
 /* =========================
@@ -162,19 +179,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("registrar_uniforme")
+        .setCustomId("uniforme_btn")
         .setLabel("Registrar Uniforme")
         .setStyle(ButtonStyle.Primary)
     );
 
     return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORMES")],
+      embeds: [new EmbedBuilder().setTitle("👕 UNIFORME")],
       components: [row]
     });
   }
 
-  // BOTÃO UNIFORME
-  if (interaction.isButton() && interaction.customId === "registrar_uniforme") {
+  if (interaction.isButton() && interaction.customId === "uniforme_btn") {
 
     const modal = new ModalBuilder()
       .setCustomId("modal_uniforme")
@@ -195,7 +211,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
-  // MODAL UNIFORME
   if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
 
     const nome = interaction.fields.getTextInputValue("nome");
@@ -223,9 +238,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // META
   if (interaction.isChatInputCommand() && interaction.commandName === "meta") {
     return interaction.reply({
-      embeds: [
-        new EmbedBuilder().setTitle("🎯 Envie print com quantidade (200x)")
-      ]
+      embeds: [new EmbedBuilder().setTitle("🎯 Envie print (ex: 200x)")],
     });
   }
 
@@ -237,7 +250,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /* =========================
-   📸 OCR META
+   📸 IA META
 ========================= */
 client.on("messageCreate", async (message) => {
 
@@ -248,8 +261,8 @@ client.on("messageCreate", async (message) => {
   if (!att) return;
 
   try {
-    const r = await Tesseract.recognize(att.url, "eng");
-    const texto = r.data.text.toLowerCase();
+    const [result] = await visionClient.textDetection(att.url);
+    const texto = result.fullTextAnnotation?.text?.toLowerCase() || "";
 
     const match = texto.match(/(\d+)\s*x/);
     if (!match) return message.reply("❌ Não detectei número");
@@ -264,19 +277,19 @@ client.on("messageCreate", async (message) => {
     await canal.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("✅ META")
+          .setTitle("🧠 META IA")
           .addFields(
-            { name: "Quantidade", value: `${qtd}` },
-            { name: "Total", value: `${metasPlayer[id]}` }
+            { name: "Quantidade", value: `${qtd}`, inline: true },
+            { name: "Total", value: `${metasPlayer[id]}`, inline: true }
           )
           .setImage(att.url)
       ]
     });
 
-    message.reply(`✅ ${qtd} detectado`);
-
-  } catch {
-    message.reply("❌ erro OCR");
+    message.reply(`🧠 Detectado: ${qtd}`);
+  } catch (err) {
+    console.error(err);
+    message.reply("❌ erro IA");
   }
 });
 
