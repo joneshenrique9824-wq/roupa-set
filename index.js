@@ -14,6 +14,7 @@ import {
   SlashCommandBuilder,
   Events
 } from "discord.js";
+import Tesseract from "tesseract.js";
 
 /* =========================
    🤖 BOT
@@ -37,35 +38,26 @@ const {
   CANAL_FEMININO
 } = process.env;
 
-// 🎯 canal fixo metas
-const CANAL_METAS = "1501326790537379860";
+const CANAL_METAS = "1501326344586526820";
 
 /* =========================
-   🔰 CARGOS
+   👥 CARGOS
 ========================= */
 const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "1456655598396510213";
 const CARGO_LIDER = process.env.CARGO_LIDER || "1456655598396510215";
 const CARGO_GERENTE = process.env.CARGO_GERENTE || "1456655598530723956";
 
-/* =========================
-   📦 MEMÓRIA
-========================= */
 const cargos = {
   LIDERANCA: [],
   GERENTE: [],
   MEMBROS: []
 };
 
-const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
-
-// 🎯 metas
-const metasPlayer = {};
-const META_TOTAL = 10;
-
 /* =========================
-   ⏱️ COOLDOWN
+   🎯 METAS
 ========================= */
-const cooldown = new Set();
+const metasPlayer = {};
+const META_TOTAL = 1000;
 
 /* =========================
    🔒 PERMISSÕES
@@ -86,26 +78,23 @@ const isAdmin = (interaction) => {
 };
 
 /* =========================
-   🧠 EMBED CARGOS
+   🧠 EMBED HIERARQUIA
 ========================= */
 function criarEmbedCargos() {
-  const formatar = (lista) =>
-    lista.length ? lista.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
+  const f = (l) => l.length ? l.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
 
   return new EmbedBuilder()
     .setColor("#2b2d31")
-    .setDescription(
-`👥 **HIERARQUIA**
-
+    .setDescription(`
 👑 LIDERANÇA
-${formatar(cargos.LIDERANCA)}
+${f(cargos.LIDERANCA)}
 
 👔 GERENTE
-${formatar(cargos.GERENTE)}
+${f(cargos.GERENTE)}
 
 🪖 MEMBROS
-${formatar(cargos.MEMBROS)}`
-    );
+${f(cargos.MEMBROS)}
+`);
 }
 
 /* =========================
@@ -113,14 +102,10 @@ ${formatar(cargos.MEMBROS)}`
 ========================= */
 async function pegarOuCriarCanalPlayer(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
-
   let canal = guild.channels.cache.find(c => c.name === nome);
   if (canal) return canal;
 
-  return await guild.channels.create({
-    name: nome,
-    type: 0
-  });
+  return await guild.channels.create({ name: nome, type: 0 });
 }
 
 /* =========================
@@ -130,43 +115,27 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Abrir painel de uniformes"),
+    .setDescription("Uniformes"),
 
   new SlashCommandBuilder()
     .setName("quadro")
-    .setDescription("Ver hierarquia"),
+    .setDescription("Hierarquia"),
 
   new SlashCommandBuilder()
     .setName("addcargo")
-    .setDescription("Adicionar pessoa ao cargo")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("LIDERANCA / GERENTE / MEMBROS")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário alvo")
-        .setRequired(true)
-    ),
+    .setDescription("Adicionar cargo")
+    .addStringOption(o => o.setName("cargo").setDescription("Cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setDescription("Usuário").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("removercargo")
-    .setDescription("Remover pessoa do cargo")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("LIDERANCA / GERENTE / MEMBROS")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário alvo")
-        .setRequired(true)
-    ),
+    .setDescription("Remover cargo")
+    .addStringOption(o => o.setName("cargo").setDescription("Cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setDescription("Usuário").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Painel de metas diárias")
+    .setDescription("Metas automáticas com OCR")
 ];
 
 /* =========================
@@ -175,17 +144,12 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
-  console.log(`🔥 Logado como ${client.user.tag}`);
+  console.log(`🔥 ${client.user.tag}`);
 
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands.map(c => c.toJSON()) }
-    );
-    console.log("✅ Comandos registrados!");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands.map(c => c.toJSON()) }
+  );
 });
 
 /* =========================
@@ -193,95 +157,128 @@ client.once(Events.ClientReady, async () => {
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // META
-  if (interaction.isChatInputCommand() && interaction.commandName === "meta") {
-
-    if (!temPermissao(interaction)) {
-      return interaction.reply({ content: "❌ Sem permissão", ephemeral: true });
-    }
+  // UNIFORME
+  if (interaction.isChatInputCommand() && interaction.commandName === "painel") {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("meta_btn")
-        .setLabel("Enviar Meta")
-        .setStyle(ButtonStyle.Success)
+        .setCustomId("registrar_uniforme")
+        .setLabel("Registrar Uniforme")
+        .setStyle(ButtonStyle.Primary)
     );
 
     return interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🎯 META DIÁRIA")
-          .setDescription(
-`📦 Requisitos:
-🛡️ 30 Kevlar
-⛏️ 200 Minério de Ferro
-
-📸 Envie a imagem no canal de metas`
-          )
-          .setColor("#00ff88")
-      ],
+      embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORMES")],
       components: [row]
     });
   }
 
-  if (interaction.isButton() && interaction.customId === "meta_btn") {
+  // BOTÃO UNIFORME
+  if (interaction.isButton() && interaction.customId === "registrar_uniforme") {
+
+    const modal = new ModalBuilder()
+      .setCustomId("modal_uniforme")
+      .setTitle("Uniforme");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("nome").setLabel("Nome").setStyle(TextInputStyle.Short)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("tipo").setLabel("Masculino/Feminino").setStyle(TextInputStyle.Short)
+      )
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // MODAL UNIFORME
+  if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
+
+    const nome = interaction.fields.getTextInputValue("nome");
+    const codigo = interaction.fields.getTextInputValue("codigo");
+    const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
+
+    const canal = await client.channels.fetch(
+      tipo.startsWith("m") ? CANAL_MASCULINO : CANAL_FEMININO
+    );
+
+    await canal.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("👕 UNIFORME")
+          .addFields(
+            { name: "Nome", value: nome },
+            { name: "Código", value: codigo }
+          )
+      ]
+    });
+
+    return interaction.reply({ content: "✅ Enviado!", ephemeral: true });
+  }
+
+  // META
+  if (interaction.isChatInputCommand() && interaction.commandName === "meta") {
     return interaction.reply({
-      content: "📸 Envie a imagem no canal de metas!",
-      ephemeral: true
+      embeds: [
+        new EmbedBuilder().setTitle("🎯 Envie print com quantidade (200x)")
+      ]
     });
   }
 
-  // QUADRO
+  // HIERARQUIA
   if (interaction.isChatInputCommand() && interaction.commandName === "quadro") {
     return interaction.reply({ embeds: [criarEmbedCargos()] });
   }
+
 });
 
 /* =========================
-   📸 METAS AUTOMÁTICO
+   📸 OCR META
 ========================= */
 client.on("messageCreate", async (message) => {
 
   if (message.author.bot) return;
   if (message.channel.id !== CANAL_METAS) return;
 
-  const attachment = message.attachments.first();
-  if (!attachment) return;
+  const att = message.attachments.first();
+  if (!att) return;
 
-  // valida imagem (corrigido)
-  if (!attachment.url.match(/\.(png|jpg|jpeg|webp|gif)/i)) return;
+  try {
+    const r = await Tesseract.recognize(att.url, "eng");
+    const texto = r.data.text.toLowerCase();
 
-  const id = message.author.id;
+    const match = texto.match(/(\d+)\s*x/);
+    if (!match) return message.reply("❌ Não detectei número");
 
-  if (!metasPlayer[id]) metasPlayer[id] = 0;
-  metasPlayer[id]++;
+    const qtd = parseInt(match[1]);
 
-  const feitas = metasPlayer[id];
-  const faltam = META_TOTAL - feitas;
+    const id = message.author.id;
+    metasPlayer[id] = (metasPlayer[id] || 0) + qtd;
 
-  const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
+    const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
 
-  const embed = new EmbedBuilder()
-    .setTitle("✅ META REGISTRADA")
-    .setColor("#00ff00")
-    .addFields(
-      { name: "👤 Jogador", value: `<@${id}>`, inline: true },
-      { name: "📊 Feitas", value: `${feitas}`, inline: true },
-      { name: "📉 Faltam", value: `${faltam > 0 ? faltam : 0}`, inline: true },
-      { name: "📦 Meta", value: "30 Kevlar\n200 Minério de Ferro" }
-    )
-    .setImage(attachment.url)
-    .setTimestamp();
+    await canal.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("✅ META")
+          .addFields(
+            { name: "Quantidade", value: `${qtd}` },
+            { name: "Total", value: `${metasPlayer[id]}` }
+          )
+          .setImage(att.url)
+      ]
+    });
 
-  await canal.send({ embeds: [embed] });
+    message.reply(`✅ ${qtd} detectado`);
 
-  await message.reply(`✅ Meta registrada! Canal: ${canal}`);
+  } catch {
+    message.reply("❌ erro OCR");
+  }
 });
 
-/* =========================
-   ANTI CRASH
-========================= */
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
-
+/* ========================= */
 client.login(TOKEN);
