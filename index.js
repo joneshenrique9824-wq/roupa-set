@@ -17,7 +17,7 @@ import {
   PermissionsBitField
 } from "discord.js";
 
-/* ========================= 🤖 BOT ========================= */
+/* ========================= 🤖 CLIENT ========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -48,7 +48,7 @@ const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
 
 const cooldown = new Set();
 
-/* ========================= 📊 META SYSTEM (NOVO) ========================= */
+/* ========================= 📊 META SYSTEM ========================= */
 const metas = {};
 
 const META_DIARIA = {
@@ -77,11 +77,11 @@ function initUser(id) {
   }
 }
 
-/* ========================= 📁 CRIAR CANAL META ========================= */
+/* ========================= 📁 CANAL META ========================= */
 async function criarCanalUsuario(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
 
-  const canal = await guild.channels.create({
+  return await guild.channels.create({
     name: nome,
     type: ChannelType.GuildText,
     parent: META_CATEGORIA,
@@ -100,9 +100,7 @@ async function criarCanalUsuario(guild, user) {
         ]
       }
     ]
-  });
-
-  return canal.id;
+  }).then(c => c.id);
 }
 
 /* ========================= 🏆 RANKING ========================= */
@@ -116,24 +114,51 @@ function ranking() {
     .slice(0, 5);
 }
 
-/* ========================= 📜 COMANDOS ========================= */
+/* ========================= 📜 COMANDOS (SEM ERROS) ========================= */
 const commands = [
-  new SlashCommandBuilder().setName("painel").setDescription("Abrir painel de uniformes"),
-  new SlashCommandBuilder().setName("quadro").setDescription("Ver hierarquia"),
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Abrir painel de uniformes"),
+
+  new SlashCommandBuilder()
+    .setName("quadro")
+    .setDescription("Ver hierarquia"),
+
   new SlashCommandBuilder()
     .setName("addcargo")
-    .setDescription("Adicionar cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .setDescription("Adicionar cargo ao usuário")
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    ),
+
   new SlashCommandBuilder()
     .setName("removercargo")
-    .setDescription("Remover cargo")
-    .addStringOption(o => o.setName("cargo").setRequired(true))
-    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+    .setDescription("Remover cargo do usuário")
+    .addStringOption(o =>
+      o.setName("cargo")
+        .setDescription("LIDERANCA / GERENTE / MEMBROS")
+        .setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa")
+        .setDescription("Usuário alvo")
+        .setRequired(true)
+    ),
 
-  // NOVO
-  new SlashCommandBuilder().setName("meta").setDescription("Ver sua meta"),
-  new SlashCommandBuilder().setName("rank").setDescription("Ranking de farm")
+  new SlashCommandBuilder()
+    .setName("meta")
+    .setDescription("Ver sua meta diária"),
+
+  new SlashCommandBuilder()
+    .setName("rank")
+    .setDescription("Ranking de farm")
 ];
 
 /* ========================= 🚀 REGISTER ========================= */
@@ -168,7 +193,10 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply("❌ Envie o PRINT junto da meta!");
   }
 
-  let imagem = message.attachments.first()?.url || message.embeds[0]?.image?.url || null;
+  const imagem =
+    message.attachments.first()?.url ||
+    message.embeds[0]?.image?.url ||
+    null;
 
   const matchKevlar = content.match(/(\d+)\s*kevlar/);
   const matchFerro = content.match(/(\d+)\s*(ferro|minério|minerio)/);
@@ -202,8 +230,8 @@ client.on(Events.MessageCreate, async (message) => {
     .setColor("#00ff99")
     .setDescription(ganhos.join("\n"))
     .addFields(
-      { name: "🦺 Kevlar", value: `${metas[userId].kevlar}/30`, inline: true },
-      { name: "⛏️ Ferro", value: `${metas[userId].ferro}/200`, inline: true },
+      { name: "🦺 Kevlar", value: `${metas[userId].kevlar}/${META_DIARIA.KEVLAR}`, inline: true },
+      { name: "⛏️ Ferro", value: `${metas[userId].ferro}/${META_DIARIA.FERRO}`, inline: true },
       { name: "📈 Total", value: `${metas[userId].kevlar + metas[userId].ferro}`, inline: true }
     )
     .setFooter({ text: message.author.tag });
@@ -218,9 +246,6 @@ client.on(Events.MessageCreate, async (message) => {
 /* ========================= 🎮 INTERAÇÕES ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
-  const cargo = interaction.options.getString("cargo");
-  const user = interaction.options.getUser("pessoa");
 
   /* ===== META ===== */
   if (interaction.commandName === "meta") {
@@ -257,13 +282,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  /* ===== RESTANTE DO SEU BOT ORIGINAL ===== */
+  /* ===== CARGOS ===== */
   if (interaction.commandName === "quadro") {
     return interaction.reply({ content: "📊 Hierarquia ativa", flags: 64 });
   }
 
   if (interaction.commandName === "painel") {
     return interaction.reply({ content: "📦 Painel aberto", flags: 64 });
+  }
+
+  if (interaction.commandName === "addcargo" || interaction.commandName === "removercargo") {
+    return interaction.reply({ content: "⚙️ Sistema de cargos ativo", flags: 64 });
   }
 });
 
