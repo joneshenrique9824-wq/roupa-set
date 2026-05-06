@@ -2,35 +2,18 @@ import "dotenv/config";
 import {
   Client,
   GatewayIntentBits,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   EmbedBuilder,
-  REST,
-  Routes,
   Events,
   ChannelType,
   PermissionsBitField
 } from "discord.js";
 
-/* =========================
-   🔒 PROTEÇÃO
-========================= */
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
-
-/* =========================
-   🤖 CLIENT
-========================= */
+/* ========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -39,182 +22,128 @@ const client = new Client({
 ========================= */
 const {
   TOKEN,
-  CLIENT_ID,
-  GUILD_ID,
-  CANAL_MASCULINO,
-  CANAL_FEMININO,
   CANAL_METAS
 } = process.env;
 
-if (!TOKEN || !CLIENT_ID || !GUILD_ID || !CANAL_METAS) {
-  console.error("❌ CONFIG .env incompleta");
+if (!TOKEN || !CANAL_METAS) {
+  console.log("❌ CONFIG .env incompleta");
   process.exit(1);
 }
 
 /* =========================
-   📁 CONFIG
+   ⚙️ CONFIG GERAL
 ========================= */
-const CATEGORIA_ID = "1501326344586526820";
+const META_PADRAO = 200;
+
+const CATEGORIA_LOG_ID = "1501326344586526820";
+const CARGO_LIDER_ID = "1456655598396510215";
+const NOME_CATEGORIA_META = "🏆 METAS CONCLUÍDAS";
+
+const entregas = new Map();
 const pendentes = new Map();
 
 /* =========================
-   📁 CANAL POR USUÁRIO
+   📁 CANAL LOG POR USUÁRIO
 ========================= */
-async function getCanalMeta(guild, user) {
-  try {
-    const categoria = guild.channels.cache.get(CATEGORIA_ID);
-    if (!categoria) return null;
-
-    const nome = `meta-${user.username}`
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-
-    let canal = guild.channels.cache.find(
-      c => c.name === nome && c.parentId === categoria.id
-    );
-
-    if (canal) return canal;
-
-    return await guild.channels.create({
-      name: nome,
-      type: ChannelType.GuildText,
-      parent: categoria.id,
-      permissionOverwrites: [
-        {
-          id: guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel]
-        },
-        {
-          id: user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages
-          ]
-        }
-      ]
-    });
-
-  } catch (err) {
-    console.error(err);
+async function getCanalLog(guild, user) {
+  const categoria = guild.channels.cache.get(CATEGORIA_LOG_ID);
+  if (!categoria) {
+    console.log("❌ Categoria de log não encontrada");
     return null;
   }
+
+  const nome = `log-${user.username}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  let canal = guild.channels.cache.find(
+    c => c.name === nome && c.parentId === categoria.id
+  );
+
+  if (canal) return canal;
+
+  return await guild.channels.create({
+    name: nome,
+    type: ChannelType.GuildText,
+    parent: categoria.id,
+    permissionOverwrites: [
+      {
+        id: guild.id,
+        deny: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: user.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
+      },
+      {
+        id: CARGO_LIDER_ID,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      }
+    ]
+  });
 }
 
 /* =========================
-   📜 COMANDOS
+   🏆 CATEGORIA META
 ========================= */
-const commands = [
-  { name: "painel", description: "Abrir painel de uniforme" },
-  { name: "meta", description: "Sistema de metas" }
-];
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-client.once(Events.ClientReady, async () => {
-  console.log(`🔥 ONLINE: ${client.user.tag}`);
-
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
+async function getCategoriaMeta(guild) {
+  let categoria = guild.channels.cache.find(
+    c => c.name === NOME_CATEGORIA_META && c.type === ChannelType.GuildCategory
   );
 
-  console.log("✅ Comandos registrados");
-});
+  if (categoria) return categoria;
+
+  return await guild.channels.create({
+    name: NOME_CATEGORIA_META,
+    type: ChannelType.GuildCategory
+  });
+}
 
 /* =========================
-   🎮 INTERAÇÕES
+   🏆 CANAL META BATIDA
 ========================= */
-client.on(Events.InteractionCreate, async (interaction) => {
-  try {
+async function criarCanalMeta(guild, user) {
+  const categoria = await getCategoriaMeta(guild);
 
-    if (interaction.isChatInputCommand()) {
+  const nome = `meta-${user.username}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 
-      if (interaction.commandName === "painel") {
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("btn_uniforme")
-            .setLabel("Registrar Uniforme")
-            .setStyle(ButtonStyle.Primary)
-        );
+  let canal = guild.channels.cache.find(
+    c => c.name === nome && c.parentId === categoria.id
+  );
 
-        return interaction.reply({
-          embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORME")],
-          components: [row]
-        });
+  if (canal) return canal;
+
+  return await guild.channels.create({
+    name: nome,
+    type: ChannelType.GuildText,
+    parent: categoria.id,
+    permissionOverwrites: [
+      {
+        id: guild.id,
+        deny: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: user.id,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: CARGO_LIDER_ID,
+        allow: [PermissionsBitField.Flags.ViewChannel]
       }
-
-      if (interaction.commandName === "meta") {
-        return interaction.reply({
-          content: "📸 Envie número e imagem no canal de metas",
-          flags: 64
-        });
-      }
-    }
-
-    if (interaction.isButton() && interaction.customId === "btn_uniforme") {
-
-      const modal = new ModalBuilder()
-        .setCustomId("modal_uniforme")
-        .setTitle("Registrar Uniforme");
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("nome").setLabel("Nome").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId("tipo").setLabel("Masculino ou Feminino").setStyle(TextInputStyle.Short)
-        )
-      );
-
-      return interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
-
-      const nome = interaction.fields.getTextInputValue("nome");
-      const codigo = interaction.fields.getTextInputValue("codigo");
-      const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
-
-      const canalID = tipo.startsWith("m")
-        ? CANAL_MASCULINO
-        : CANAL_FEMININO;
-
-      let canal;
-
-      try {
-        canal = await client.channels.fetch(canalID);
-      } catch {
-        return interaction.reply({ content: "❌ Canal inválido", flags: 64 });
-      }
-
-      await canal.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("👕 UNIFORME REGISTRADO")
-            .addFields(
-              { name: "Nome", value: nome },
-              { name: "Código", value: codigo }
-            )
-        ]
-      });
-
-      return interaction.reply({ content: "✅ Enviado!", flags: 64 });
-    }
-
-  } catch (err) {
-    console.error(err);
-  }
-});
+    ]
+  });
+}
 
 /* =========================
-   📸 METAS SEM SOMA
+   📸 SISTEMA DE METAS
 ========================= */
-client.on("messageCreate", async (message) => {
+client.on(Events.MessageCreate, async (message) => {
   try {
-
     if (message.author.bot) return;
     if (message.channel.id !== CANAL_METAS) return;
 
@@ -232,33 +161,43 @@ client.on("messageCreate", async (message) => {
     pendentes.set(userId, data);
 
     if (!data.numero && data.imagem) {
-      return message.reply("❌ Agora envie o número");
+      return message.reply("❌ Envie o número");
     }
 
     if (data.numero && !data.imagem) {
-      return message.reply("📸 Agora envie a imagem");
+      return message.reply("📸 Envie a imagem");
     }
 
     if (data.numero && data.imagem) {
 
-      const canal = await getCanalMeta(message.guild, message.author);
-      if (!canal) return message.reply("❌ Erro ao criar canal");
+      const total = (entregas.get(userId) || 0) + 1;
+      entregas.set(userId, total);
 
-      await canal.send({
+      const canalLog = await getCanalLog(message.guild, message.author);
+      if (!canalLog) return message.reply("❌ Erro ao criar canal");
+
+      await canalLog.send({
         embeds: [
           new EmbedBuilder()
             .setTitle("📦 ENTREGA REGISTRADA")
             .setImage(data.imagem)
             .addFields(
               { name: "👤 Usuário", value: message.author.username },
-              { name: "📥 Quantidade", value: `${data.numero}` }
+              { name: "📥 Quantidade", value: `${data.numero}` },
+              { name: "📊 Progresso", value: `${total}/${META_PADRAO}` }
             )
         ]
       });
 
+      if (total >= META_PADRAO) {
+        const canalMeta = await criarCanalMeta(message.guild, message.author);
+
+        await canalMeta.send(`🏆 ${message.author} bateu a meta!`);
+      }
+
       pendentes.delete(userId);
 
-      return message.reply("✅ Entrega registrada!");
+      return message.reply(`✅ Entrega registrada (${total}/${META_PADRAO})`);
     }
 
   } catch (err) {
@@ -268,4 +207,8 @@ client.on("messageCreate", async (message) => {
 });
 
 /* ========================= */
+client.once(Events.ClientReady, () => {
+  console.log(`🔥 ONLINE: ${client.user.tag}`);
+});
+
 client.login(TOKEN);
