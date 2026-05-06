@@ -17,7 +17,13 @@ import {
 } from "discord.js";
 
 /* =========================
-   🤖 CLIENT
+   🔒 PROTEÇÃO GLOBAL
+========================= */
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
+
+/* =========================
+   🤖 BOT
 ========================= */
 const client = new Client({
   intents: [
@@ -40,13 +46,18 @@ const {
   CANAL_METAS
 } = process.env;
 
+if (!TOKEN) {
+  console.error("❌ TOKEN não definido no .env");
+  process.exit(1);
+}
+
 /* =========================
    🎯 METAS
 ========================= */
 const metas = {};
 
 /* =========================
-   📁 CRIAR CANAL
+   📁 CRIAR CANAL SEGURO
 ========================= */
 async function criarCanalMeta(guild, user, qtd) {
   try {
@@ -79,9 +90,12 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Sistema de metas")
+    .setDescription("Sistema de metas com imagem")
 ];
 
+/* =========================
+   🚀 REGISTER
+========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
@@ -102,12 +116,9 @@ client.once(Events.ClientReady, async () => {
    🎮 INTERAÇÕES
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
-
   try {
 
-    /* =========================
-       📜 COMANDOS
-    ========================= */
+    /* 📜 COMANDOS */
     if (interaction.isChatInputCommand()) {
 
       if (interaction.commandName === "painel") {
@@ -119,23 +130,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
         return interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("👕 PAINEL UNIFORME")
-              .setDescription("Clique no botão para registrar")
-          ],
+          embeds: [new EmbedBuilder().setTitle("👕 PAINEL UNIFORME")],
           components: [row]
         });
       }
 
       if (interaction.commandName === "meta") {
-        return interaction.reply("📸 Envie uma imagem ou número");
+        return interaction.reply({
+          content: "📸 Envie imagem OU número"
+        });
       }
     }
 
-    /* =========================
-       🔘 BOTÃO
-    ========================= */
+    /* 🔘 BOTÃO */
     if (interaction.isButton() && interaction.customId === "uniforme_btn") {
 
       const modal = new ModalBuilder()
@@ -166,9 +173,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    /* =========================
-       🧾 MODAL
-    ========================= */
+    /* 🧾 MODAL */
     if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
 
       const nome = interaction.fields.getTextInputValue("nome");
@@ -179,7 +184,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ? CANAL_MASCULINO
         : CANAL_FEMININO;
 
-      const canal = await client.channels.fetch(canalID);
+      let canal = null;
+
+      try {
+        canal = await client.channels.fetch(canalID);
+      } catch {
+        return interaction.reply({
+          content: "❌ Canal inválido no .env",
+          ephemeral: true
+        });
+      }
 
       if (!canal) {
         return interaction.reply({
@@ -207,33 +221,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   } catch (err) {
     console.error("Erro interação:", err);
-  }
 
+    if (interaction.isRepliable()) {
+      interaction.reply({
+        content: "❌ Erro interno",
+        ephemeral: true
+      }).catch(() => {});
+    }
+  }
 });
 
 /* =========================
-   📸 META (SEM OCR PESADO)
+   📸 METAS (COM FALLBACK)
 ========================= */
 client.on("messageCreate", async (message) => {
-
-  if (message.author.bot) return;
-  if (message.channel.id !== CANAL_METAS) return;
-
   try {
+
+    if (message.author.bot) return;
+    if (message.channel.id !== CANAL_METAS) return;
 
     let numero = null;
 
-    // 🔢 tenta pegar número do texto
-    const matchTexto = message.content.match(/(\d+)/);
-    if (matchTexto) numero = parseInt(matchTexto[1]);
+    // pegar número do texto
+    const match = message.content.match(/(\d+)/);
+    if (match) numero = parseInt(match[1]);
 
-    // 📸 se tiver imagem e não tiver número
     if (!numero && message.attachments.size > 0) {
-      return message.reply("⚠️ Não consegui ler imagem (OCR desativado). Envie o número junto.");
+      return message.reply("⚠️ Não consegui ler imagem. Envie número junto.");
     }
 
     if (!numero) {
-      return message.reply("❌ Envie um número ou imagem + número");
+      return message.reply("❌ Envie um número válido");
     }
 
     const user = message.author;
@@ -256,13 +274,12 @@ client.on("messageCreate", async (message) => {
       });
     }
 
-    message.reply(`✅ Meta registrada: ${numero}`);
+    message.reply(`✅ Registrado: ${numero}`);
 
   } catch (err) {
     console.error("Erro meta:", err);
     message.reply("❌ Erro ao processar");
   }
-
 });
 
 /* ========================= */
