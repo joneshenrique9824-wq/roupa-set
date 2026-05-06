@@ -44,8 +44,7 @@ export async function criarCanalUsuario(guild, user) {
         allow: [
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.AttachFiles,
-          PermissionsBitField.Flags.ReadMessageHistory
+          PermissionsBitField.Flags.AttachFiles
         ]
       }
     ]
