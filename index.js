@@ -11,7 +11,6 @@ import {
   EmbedBuilder,
   REST,
   Routes,
-  SlashCommandBuilder,
   Events,
   ChannelType
 } from "discord.js";
@@ -23,7 +22,7 @@ process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
 /* =========================
-   🤖 BOT
+   🤖 CLIENT
 ========================= */
 const client = new Client({
   intents: [
@@ -43,37 +42,46 @@ const {
   GUILD_ID,
   CANAL_MASCULINO,
   CANAL_FEMININO,
-  CANAL_METAS
+  CANAL_METAS,
+  CATEGORIA_METAS,
+  META_PADRAO
 } = process.env;
 
-if (!TOKEN) {
-  console.error("❌ TOKEN não definido no .env");
+if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
+  console.error("❌ Configure TOKEN, CLIENT_ID e GUILD_ID no .env");
   process.exit(1);
 }
 
 /* =========================
-   🎯 METAS
+   🎯 DADOS
 ========================= */
-const metas = {};
+const metas = new Map();
 
 /* =========================
-   📁 CRIAR CANAL SEGURO
+   📁 CRIAR / PEGAR CANAL
 ========================= */
-async function criarCanalMeta(guild, user, qtd) {
+async function getCanalMeta(guild, user) {
   try {
-    const nome = `meta-${user.username}-${qtd}x`
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "");
+    const categoria = guild.channels.cache.get(CATEGORIA_METAS);
+    if (!categoria) return null;
 
-    let canal = guild.channels.cache.find(c => c.name === nome);
+    const nome = user.username
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    let canal = guild.channels.cache.find(
+      c => c.name === nome && c.parentId === categoria.id
+    );
+
     if (canal) return canal;
 
-    return await guild.channels.create({
+    canal = await guild.channels.create({
       name: nome,
       type: ChannelType.GuildText,
-      topic: `Meta de ${user.username}`
+      parent: categoria.id
     });
 
+    return canal;
   } catch (err) {
     console.error("Erro ao criar canal:", err);
     return null;
@@ -84,17 +92,18 @@ async function criarCanalMeta(guild, user, qtd) {
    📜 COMANDOS
 ========================= */
 const commands = [
-  new SlashCommandBuilder()
-    .setName("painel")
-    .setDescription("Painel de uniforme"),
-
-  new SlashCommandBuilder()
-    .setName("meta")
-    .setDescription("Sistema de metas com imagem")
+  {
+    name: "painel",
+    description: "Abrir painel de uniforme"
+  },
+  {
+    name: "meta",
+    description: "Sistema de metas"
+  }
 ];
 
 /* =========================
-   🚀 REGISTER
+   🚀 REGISTRAR COMANDOS
 ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -104,11 +113,11 @@ client.once(Events.ClientReady, async () => {
   try {
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands.map(c => c.toJSON()) }
+      { body: commands }
     );
     console.log("✅ Comandos registrados");
   } catch (err) {
-    console.error("Erro ao registrar comandos:", err);
+    console.error(err);
   }
 });
 
@@ -124,26 +133,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.commandName === "painel") {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("uniforme_btn")
+            .setCustomId("btn_uniforme")
             .setLabel("Registrar Uniforme")
             .setStyle(ButtonStyle.Primary)
         );
 
         return interaction.reply({
-          embeds: [new EmbedBuilder().setTitle("👕 PAINEL UNIFORME")],
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("👕 PAINEL DE UNIFORME")
+              .setDescription("Clique no botão abaixo")
+          ],
           components: [row]
         });
       }
 
       if (interaction.commandName === "meta") {
         return interaction.reply({
-          content: "📸 Envie imagem OU número"
+          content: "📸 Envie: número + imagem no canal de metas",
+          ephemeral: true
         });
       }
     }
 
     /* 🔘 BOTÃO */
-    if (interaction.isButton() && interaction.customId === "uniforme_btn") {
+    if (interaction.isButton() && interaction.customId === "btn_uniforme") {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_uniforme")
@@ -174,65 +188,54 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     /* 🧾 MODAL */
-    if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
+    if (interaction.isModalSubmit()) {
 
-      const nome = interaction.fields.getTextInputValue("nome");
-      const codigo = interaction.fields.getTextInputValue("codigo");
-      const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
+      if (interaction.customId === "modal_uniforme") {
 
-      const canalID = tipo.startsWith("m")
-        ? CANAL_MASCULINO
-        : CANAL_FEMININO;
+        const nome = interaction.fields.getTextInputValue("nome");
+        const codigo = interaction.fields.getTextInputValue("codigo");
+        const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
 
-      let canal = null;
+        const canalID = tipo.startsWith("m")
+          ? CANAL_MASCULINO
+          : CANAL_FEMININO;
 
-      try {
-        canal = await client.channels.fetch(canalID);
-      } catch {
+        let canal;
+
+        try {
+          canal = await client.channels.fetch(canalID);
+        } catch {
+          return interaction.reply({
+            content: "❌ Canal inválido no .env",
+            ephemeral: true
+          });
+        }
+
+        await canal.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("👕 UNIFORME REGISTRADO")
+              .addFields(
+                { name: "Nome", value: nome },
+                { name: "Código", value: codigo }
+              )
+          ]
+        });
+
         return interaction.reply({
-          content: "❌ Canal inválido no .env",
+          content: "✅ Enviado!",
           ephemeral: true
         });
       }
-
-      if (!canal) {
-        return interaction.reply({
-          content: "❌ Canal não encontrado",
-          ephemeral: true
-        });
-      }
-
-      await canal.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("👕 UNIFORME REGISTRADO")
-            .addFields(
-              { name: "Nome", value: nome },
-              { name: "Código", value: codigo }
-            )
-        ]
-      });
-
-      return interaction.reply({
-        content: "✅ Registrado!",
-        ephemeral: true
-      });
     }
 
   } catch (err) {
     console.error("Erro interação:", err);
-
-    if (interaction.isRepliable()) {
-      interaction.reply({
-        content: "❌ Erro interno",
-        ephemeral: true
-      }).catch(() => {});
-    }
   }
 });
 
 /* =========================
-   📸 METAS (COM FALLBACK)
+   📸 SISTEMA DE METAS
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -240,45 +243,58 @@ client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
     if (message.channel.id !== CANAL_METAS) return;
 
-    let numero = null;
+    const match = message.content.match(/\d+/);
 
-    // pegar número do texto
-    const match = message.content.match(/(\d+)/);
-    if (match) numero = parseInt(match[1]);
-
-    if (!numero && message.attachments.size > 0) {
-      return message.reply("⚠️ Não consegui ler imagem. Envie número junto.");
+    if (!match) {
+      return message.reply("❌ Envie a quantidade junto com a imagem");
     }
 
-    if (!numero) {
-      return message.reply("❌ Envie um número válido");
+    if (message.attachments.size === 0) {
+      return message.reply("❌ Envie uma imagem da meta");
     }
 
-    const user = message.author;
+    const quantidade = parseInt(match[0]);
+    const userId = message.author.id;
 
-    metas[user.id] = (metas[user.id] || 0) + numero;
+    const metaTotal = parseInt(META_PADRAO || 100);
 
-    const canal = await criarCanalMeta(message.guild, user, numero);
+    const atual = (metas.get(userId) || 0) + quantidade;
+    metas.set(userId, atual);
 
-    if (canal) {
-      await canal.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🎯 META REGISTRADA")
-            .addFields(
-              { name: "Usuário", value: user.username },
-              { name: "Quantidade", value: `${numero}`, inline: true },
-              { name: "Total", value: `${metas[user.id]}`, inline: true }
-            )
-        ]
-      });
+    const falta = Math.max(metaTotal - atual, 0);
+
+    const canal = await getCanalMeta(message.guild, message.author);
+
+    if (!canal) {
+      return message.reply("❌ Categoria de metas inválida");
     }
 
-    message.reply(`✅ Registrado: ${numero}`);
+    const imagem = message.attachments.first().url;
+
+    await canal.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("📦 META ENTREGUE")
+          .setImage(imagem)
+          .addFields(
+            { name: "👤 Usuário", value: message.author.username },
+            { name: "📥 Entregue", value: `${quantidade}`, inline: true },
+            { name: "📊 Total", value: `${atual}`, inline: true },
+            { name: "⏳ Falta", value: `${falta}`, inline: true }
+          )
+          .setColor(falta === 0 ? 0x00ff00 : 0xff0000)
+      ]
+    });
+
+    if (falta === 0) {
+      await canal.send("🎉 META COMPLETA!");
+    }
+
+    message.reply(`✅ Registrado: ${quantidade}`);
 
   } catch (err) {
-    console.error("Erro meta:", err);
-    message.reply("❌ Erro ao processar");
+    console.error(err);
+    message.reply("❌ Erro ao processar meta");
   }
 });
 
