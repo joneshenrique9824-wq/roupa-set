@@ -15,10 +15,9 @@ import {
   Events,
   ChannelType
 } from "discord.js";
-import vision from "@google-cloud/vision";
 
 /* =========================
-   🤖 CRIAR BOT (TEM QUE SER PRIMEIRO)
+   🤖 BOT
 ========================= */
 const client = new Client({
   intents: [
@@ -37,18 +36,10 @@ const {
   CLIENT_ID,
   GUILD_ID,
   CANAL_MASCULINO,
-  CANAL_FEMININO,
-  GOOGLE_CREDENTIALS
+  CANAL_FEMININO
 } = process.env;
 
 const CANAL_METAS = "1501326344586526820";
-
-/* =========================
-   🧠 GOOGLE VISION
-========================= */
-const visionClient = new vision.ImageAnnotatorClient({
-  credentials: JSON.parse(GOOGLE_CREDENTIALS || "{}")
-});
 
 /* =========================
    🎯 METAS
@@ -56,7 +47,7 @@ const visionClient = new vision.ImageAnnotatorClient({
 const metasPlayer = {};
 
 /* =========================
-   📁 CRIAR CANAL PLAYER
+   📁 CANAL PLAYER
 ========================= */
 async function pegarOuCriarCanalPlayer(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
@@ -80,16 +71,16 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Enviar metas com IA")
+    .setDescription("Sistema de metas")
 ];
 
 /* =========================
-   🚀 REGISTRAR COMANDOS
+   🚀 REGISTRO
 ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
-  console.log(`🔥 ${client.user.tag} ONLINE`);
+  console.log(`🔥 ONLINE: ${client.user.tag}`);
 
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
@@ -114,21 +105,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
     );
 
     return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("👕 UNIFORME")],
+      embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORME")],
       components: [row]
     });
   }
 
   if (interaction.commandName === "meta") {
     return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("📸 Envie print com número (ex: 200x)")]
+      embeds: [
+        new EmbedBuilder().setTitle("📸 Envie: 200x minério ou 200 ferro")
+      ]
     });
   }
 
 });
 
 /* =========================
-   🎯 BOTÃO + MODAL
+   🧾 MODAL UNIFORME
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
@@ -140,13 +133,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("nome").setLabel("Nome").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("nome")
+          .setLabel("Nome")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("codigo")
+          .setLabel("Código")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("tipo").setLabel("Masculino ou Feminino").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("tipo")
+          .setLabel("Masculino ou Feminino")
+          .setStyle(TextInputStyle.Short)
       )
     );
 
@@ -180,58 +182,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /* =========================
-   🧠 IA OCR (META)
+   🎯 SISTEMA DE METAS (SEM IA)
 ========================= */
 client.on("messageCreate", async (message) => {
 
   if (message.author.bot) return;
   if (message.channel.id !== CANAL_METAS) return;
 
-  const att = message.attachments.first();
-  if (!att) return;
+  const texto = message.content.toLowerCase();
 
-  try {
+  // pega número de qualquer mensagem
+  const match = texto.match(/(\d+)/);
 
-    const [result] = await visionClient.textDetection({
-      image: { source: { imageUri: att.url } }
-    });
-
-    const texto = result.fullTextAnnotation?.text?.toLowerCase() || "";
-
-    console.log("TEXTO DETECTADO:", texto);
-
-    const match = texto.match(/(\d+)/);
-
-    if (!match) {
-      return message.reply("❌ Não detectei número");
-    }
-
-    const qtd = parseInt(match[1]);
-    const id = message.author.id;
-
-    metasPlayer[id] = (metasPlayer[id] || 0) + qtd;
-
-    const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
-
-    await canal.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("🧠 META DETECTADA")
-          .addFields(
-            { name: "Quantidade", value: `${qtd}`, inline: true },
-            { name: "Total", value: `${metasPlayer[id]}`, inline: true }
-          )
-          .setImage(att.url)
-      ]
-    });
-
-    message.reply(`✅ Detectado: ${qtd}`);
-
-  } catch (err) {
-    console.error(err);
-    message.reply("❌ Erro na IA");
+  if (!match) {
+    return message.reply("❌ Não detectei número (ex: 200x)");
   }
 
+  const qtd = parseInt(match[1]);
+  const id = message.author.id;
+
+  metasPlayer[id] = (metasPlayer[id] || 0) + qtd;
+
+  const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
+
+  await canal.send({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("🎯 META REGISTRADA")
+        .addFields(
+          { name: "Quantidade", value: `${qtd}`, inline: true },
+          { name: "Total", value: `${metasPlayer[id]}`, inline: true }
+        )
+        .setImage(message.attachments.first()?.url || null)
+    ]
+  });
+
+  message.reply(`✅ Registrado: ${qtd}`);
 });
 
 /* ========================= */
