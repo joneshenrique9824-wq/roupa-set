@@ -12,11 +12,12 @@ import {
   REST,
   Routes,
   Events,
-  ChannelType
+  ChannelType,
+  PermissionsBitField
 } from "discord.js";
 
 /* =========================
-   🔒 PROTEÇÃO GLOBAL
+   🔒 PROTEÇÃO
 ========================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
@@ -42,13 +43,11 @@ const {
   GUILD_ID,
   CANAL_MASCULINO,
   CANAL_FEMININO,
-  CANAL_METAS,
-  CATEGORIA_METAS,
-  META_PADRAO
+  CANAL_METAS
 } = process.env;
 
 if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error("❌ Configure TOKEN, CLIENT_ID e GUILD_ID no .env");
+  console.error("❌ Configure TOKEN, CLIENT_ID e GUILD_ID");
   process.exit(1);
 }
 
@@ -56,16 +55,17 @@ if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
    🎯 DADOS
 ========================= */
 const metas = new Map();
+const META_PADRAO = 100;
 
 /* =========================
-   📁 CRIAR / PEGAR CANAL
+   📁 CANAL META (PRIVADO)
 ========================= */
 async function getCanalMeta(guild, user) {
   try {
-    const categoria = guild.channels.cache.get(CATEGORIA_METAS);
+    const categoria = guild.channels.cache.get("1501326344586526820");
     if (!categoria) return null;
 
-    const nome = user.username
+    const nome = `meta-${user.username}`
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
@@ -78,10 +78,24 @@ async function getCanalMeta(guild, user) {
     canal = await guild.channels.create({
       name: nome,
       type: ChannelType.GuildText,
-      parent: categoria.id
+      parent: categoria.id,
+      permissionOverwrites: [
+        {
+          id: guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ]
+        }
+      ]
     });
 
     return canal;
+
   } catch (err) {
     console.error("Erro ao criar canal:", err);
     return null;
@@ -92,33 +106,24 @@ async function getCanalMeta(guild, user) {
    📜 COMANDOS
 ========================= */
 const commands = [
-  {
-    name: "painel",
-    description: "Abrir painel de uniforme"
-  },
-  {
-    name: "meta",
-    description: "Sistema de metas"
-  }
+  { name: "painel", description: "Abrir painel de uniforme" },
+  { name: "meta", description: "Sistema de metas" }
 ];
 
 /* =========================
-   🚀 REGISTRAR COMANDOS
+   🚀 REGISTER
 ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
   console.log(`🔥 ONLINE: ${client.user.tag}`);
 
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-    console.log("✅ Comandos registrados");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
+
+  console.log("✅ Comandos registrados");
 });
 
 /* =========================
@@ -127,7 +132,6 @@ client.once(Events.ClientReady, async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
 
-    /* 📜 COMANDOS */
     if (interaction.isChatInputCommand()) {
 
       if (interaction.commandName === "painel") {
@@ -150,13 +154,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === "meta") {
         return interaction.reply({
-          content: "📸 Envie: número + imagem no canal de metas",
-          ephemeral: true
+          content: "📸 Envie número + imagem no canal de metas",
+          flags: 64
         });
       }
     }
 
-    /* 🔘 BOTÃO */
+    /* BOTÃO */
     if (interaction.isButton() && interaction.customId === "btn_uniforme") {
 
       const modal = new ModalBuilder()
@@ -187,7 +191,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    /* 🧾 MODAL */
+    /* MODAL */
     if (interaction.isModalSubmit()) {
 
       if (interaction.customId === "modal_uniforme") {
@@ -207,7 +211,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } catch {
           return interaction.reply({
             content: "❌ Canal inválido no .env",
-            ephemeral: true
+            flags: 64
           });
         }
 
@@ -224,18 +228,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         return interaction.reply({
           content: "✅ Enviado!",
-          ephemeral: true
+          flags: 64
         });
       }
     }
 
   } catch (err) {
-    console.error("Erro interação:", err);
+    console.error(err);
   }
 });
 
 /* =========================
-   📸 SISTEMA DE METAS
+   📸 METAS
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -246,27 +250,25 @@ client.on("messageCreate", async (message) => {
     const match = message.content.match(/\d+/);
 
     if (!match) {
-      return message.reply("❌ Envie a quantidade junto com a imagem");
+      return message.reply("❌ Envie número + imagem");
     }
 
     if (message.attachments.size === 0) {
-      return message.reply("❌ Envie uma imagem da meta");
+      return message.reply("❌ Envie uma imagem");
     }
 
     const quantidade = parseInt(match[0]);
     const userId = message.author.id;
 
-    const metaTotal = parseInt(META_PADRAO || 100);
-
     const atual = (metas.get(userId) || 0) + quantidade;
     metas.set(userId, atual);
 
-    const falta = Math.max(metaTotal - atual, 0);
+    const falta = Math.max(META_PADRAO - atual, 0);
 
     const canal = await getCanalMeta(message.guild, message.author);
 
     if (!canal) {
-      return message.reply("❌ Categoria de metas inválida");
+      return message.reply("❌ Categoria inválida");
     }
 
     const imagem = message.attachments.first().url;
@@ -294,7 +296,7 @@ client.on("messageCreate", async (message) => {
 
   } catch (err) {
     console.error(err);
-    message.reply("❌ Erro ao processar meta");
+    message.reply("❌ Erro ao processar");
   }
 });
 
