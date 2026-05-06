@@ -56,6 +56,7 @@ if (!TOKEN || !CLIENT_ID || !GUILD_ID || !CANAL_METAS) {
 ========================= */
 const META_PADRAO = 200;
 const metas = new Map();
+const pendentes = new Map();
 const CATEGORIA_ID = "1501326344586526820";
 
 /* =========================
@@ -64,11 +65,7 @@ const CATEGORIA_ID = "1501326344586526820";
 async function getCanalMeta(guild, user) {
   try {
     const categoria = guild.channels.cache.get(CATEGORIA_ID);
-
-    if (!categoria) {
-      console.log("❌ Categoria não encontrada");
-      return null;
-    }
+    if (!categoria) return null;
 
     const nome = `meta-${user.username}`
       .toLowerCase()
@@ -80,7 +77,7 @@ async function getCanalMeta(guild, user) {
 
     if (canal) return canal;
 
-    canal = await guild.channels.create({
+    return await guild.channels.create({
       name: nome,
       type: ChannelType.GuildText,
       parent: categoria.id,
@@ -99,11 +96,8 @@ async function getCanalMeta(guild, user) {
       ]
     });
 
-    console.log("✅ Canal criado:", nome);
-    return canal;
-
   } catch (err) {
-    console.error(err);
+    console.error("Erro canal:", err);
     return null;
   }
 }
@@ -156,7 +150,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === "meta") {
         return interaction.reply({
-          content: "📸 Envie número + imagem no canal de metas",
+          content: "📸 Envie número e/ou imagem no canal de metas",
           flags: 64
         });
       }
@@ -198,10 +192,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         canal = await client.channels.fetch(canalID);
       } catch {
-        return interaction.reply({
-          content: "❌ Canal inválido",
-          flags: 64
-        });
+        return interaction.reply({ content: "❌ Canal inválido", flags: 64 });
       }
 
       await canal.send({
@@ -215,10 +206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ]
       });
 
-      return interaction.reply({
-        content: "✅ Enviado!",
-        flags: 64
-      });
+      return interaction.reply({ content: "✅ Enviado!", flags: 64 });
     }
 
   } catch (err) {
@@ -227,67 +215,73 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /* =========================
-   📸 METAS (FIX TOTAL)
+   📸 METAS AUTOMÁTICAS
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
 
     if (message.author.bot) return;
-
     if (message.channel.id !== CANAL_METAS) return;
-
-    console.log("📩 MSG:", message.content);
-
-    const numeros = message.content.match(/\d+/g);
-
-    if (!numeros) {
-      return message.reply("❌ Envie um número + imagem\nEx: 50");
-    }
-
-    if (message.attachments.size === 0) {
-      return message.reply("❌ Envie uma imagem junto");
-    }
-
-    const quantidade = parseInt(numeros[0]);
 
     const userId = message.author.id;
 
-    const atual = (metas.get(userId) || 0) + quantidade;
-    metas.set(userId, atual);
+    const numeroMatch = message.content.match(/\d+/);
+    const temNumero = numeroMatch !== null;
+    const temImagem = message.attachments.size > 0;
 
-    const falta = Math.max(META_PADRAO - atual, 0);
+    let data = pendentes.get(userId) || { numero: null, imagem: null };
 
-    const canal = await getCanalMeta(message.guild, message.author);
+    if (temNumero) data.numero = parseInt(numeroMatch[0]);
+    if (temImagem) data.imagem = message.attachments.first().url;
 
-    if (!canal) {
-      return message.reply("❌ Erro ao criar canal");
+    pendentes.set(userId, data);
+
+    if (!data.numero && data.imagem) {
+      return message.reply("❌ Agora envie o número");
     }
 
-    const imagem = message.attachments.first().url;
-
-    await canal.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("📊 RELATÓRIO DE META")
-          .setImage(imagem)
-          .addFields(
-            { name: "👤 Usuário", value: message.author.username },
-            { name: "📥 Entregue", value: `${quantidade}`, inline: true },
-            { name: "📊 Total", value: `${atual}`, inline: true },
-            { name: "⏳ Falta", value: `${falta}`, inline: true }
-          )
-      ]
-    });
-
-    if (falta === 0) {
-      await canal.send("🎉 META COMPLETA!");
+    if (data.numero && !data.imagem) {
+      return message.reply("📸 Agora envie a imagem");
     }
 
-    message.reply(`✅ Registrado ${quantidade}`);
+    if (data.numero && data.imagem) {
+
+      const quantidade = data.numero;
+
+      const atual = (metas.get(userId) || 0) + quantidade;
+      metas.set(userId, atual);
+
+      const falta = Math.max(META_PADRAO - atual, 0);
+
+      const canal = await getCanalMeta(message.guild, message.author);
+      if (!canal) return message.reply("❌ Erro ao criar canal");
+
+      await canal.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("📊 RELATÓRIO DE META")
+            .setImage(data.imagem)
+            .addFields(
+              { name: "👤 Usuário", value: message.author.username },
+              { name: "📥 Entregue", value: `${quantidade}`, inline: true },
+              { name: "📊 Total", value: `${atual}`, inline: true },
+              { name: "⏳ Falta", value: `${falta}`, inline: true }
+            )
+        ]
+      });
+
+      if (falta === 0) {
+        await canal.send("🎉 META COMPLETA!");
+      }
+
+      pendentes.delete(userId);
+
+      return message.reply(`✅ Meta registrada: ${quantidade}`);
+    }
 
   } catch (err) {
     console.error(err);
-    message.reply("❌ Erro ao processar");
+    message.reply("❌ Erro ao processar meta");
   }
 });
 
