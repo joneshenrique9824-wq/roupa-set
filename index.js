@@ -16,6 +16,8 @@ import {
   ChannelType
 } from "discord.js";
 
+import Tesseract from "tesseract.js";
+
 /* =========================
    🤖 BOT
 ========================= */
@@ -44,20 +46,21 @@ const CANAL_METAS = "1501326344586526820";
 /* =========================
    🎯 METAS
 ========================= */
-const metasPlayer = {};
+const metas = {};
 
 /* =========================
-   📁 CANAL PLAYER
+   📁 CRIAR CANAL AUTOMÁTICO
 ========================= */
-async function pegarOuCriarCanalPlayer(guild, user) {
-  const nome = `meta-${user.username}`.toLowerCase();
+async function criarCanalMeta(guild, user, qtd) {
+  const nome = `meta-${user.username}-${qtd}x`.toLowerCase();
 
   let canal = guild.channels.cache.find(c => c.name === nome);
   if (canal) return canal;
 
   return await guild.channels.create({
     name: nome,
-    type: ChannelType.GuildText
+    type: ChannelType.GuildText,
+    topic: `Meta de ${user.username}`
   });
 }
 
@@ -71,11 +74,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Sistema de metas")
+    .setDescription("Sistema de metas com leitura de imagem")
 ];
 
 /* =========================
-   🚀 REGISTRO
+   🚀 REGISTER
 ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -89,7 +92,7 @@ client.once(Events.ClientReady, async () => {
 });
 
 /* =========================
-   🎮 INTERAÇÕES
+   👕 INTERAÇÕES (UNIFORME)
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
@@ -105,7 +108,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     );
 
     return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORME")],
+      embeds: [new EmbedBuilder().setTitle("👕 PAINEL UNIFORME")],
       components: [row]
     });
   }
@@ -113,11 +116,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.commandName === "meta") {
     return interaction.reply({
       embeds: [
-        new EmbedBuilder().setTitle("📸 Envie: 200x minério ou 200 ferro")
+        new EmbedBuilder()
+          .setTitle("📸 Envie uma imagem com número (ex: 200x minério)")
       ]
     });
   }
-
 });
 
 /* =========================
@@ -176,48 +179,66 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ]
     });
 
-    return interaction.reply({ content: "✅ Enviado!", ephemeral: true });
+    return interaction.reply({ content: "✅ Registrado!", ephemeral: true });
   }
-
 });
 
 /* =========================
-   🎯 SISTEMA DE METAS (SEM IA)
+   🧠 OCR REAL (LEITURA DA FOTO)
 ========================= */
 client.on("messageCreate", async (message) => {
 
   if (message.author.bot) return;
   if (message.channel.id !== CANAL_METAS) return;
 
-  const texto = message.content.toLowerCase();
+  const att = message.attachments.first();
+  if (!att) return message.reply("❌ Envie uma imagem");
 
-  // pega número de qualquer mensagem
-  const match = texto.match(/(\d+)/);
+  try {
 
-  if (!match) {
-    return message.reply("❌ Não detectei número (ex: 200x)");
+    // 🔥 OCR REAL (LEITURA DA IMAGEM)
+    const result = await Tesseract.recognize(
+      att.url,
+      "eng",
+      { logger: m => console.log(m.status, m.progress) }
+    );
+
+    const texto = result.data.text.toLowerCase();
+
+    console.log("🧠 TEXTO LIDO:", texto);
+
+    const match = texto.match(/(\d+)/);
+
+    if (!match) {
+      return message.reply("❌ Não consegui ler número na imagem");
+    }
+
+    const qtd = parseInt(match[1]);
+    const user = message.author;
+
+    metas[user.id] = (metas[user.id] || 0) + qtd;
+
+    const canal = await criarCanalMeta(message.guild, user, qtd);
+
+    await canal.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🎯 META REGISTRADA (OCR)")
+          .addFields(
+            { name: "Usuário", value: user.username },
+            { name: "Quantidade", value: `${qtd}`, inline: true },
+            { name: "Total", value: `${metas[user.id]}`, inline: true }
+          )
+          .setImage(att.url)
+      ]
+    });
+
+    message.reply(`✅ Detectado via imagem: ${qtd}`);
+
+  } catch (err) {
+    console.error(err);
+    message.reply("❌ Erro ao ler imagem");
   }
-
-  const qtd = parseInt(match[1]);
-  const id = message.author.id;
-
-  metasPlayer[id] = (metasPlayer[id] || 0) + qtd;
-
-  const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
-
-  await canal.send({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("🎯 META REGISTRADA")
-        .addFields(
-          { name: "Quantidade", value: `${qtd}`, inline: true },
-          { name: "Total", value: `${metasPlayer[id]}`, inline: true }
-        )
-        .setImage(message.attachments.first()?.url || null)
-    ]
-  });
-
-  message.reply(`✅ Registrado: ${qtd}`);
 });
 
 /* ========================= */
