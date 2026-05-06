@@ -46,24 +46,29 @@ const {
   CANAL_METAS
 } = process.env;
 
-if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error("❌ Configure TOKEN, CLIENT_ID e GUILD_ID");
+if (!TOKEN || !CLIENT_ID || !GUILD_ID || !CANAL_METAS) {
+  console.error("❌ CONFIG .env incompleta");
   process.exit(1);
 }
 
 /* =========================
-   🎯 DADOS
+   🎯 CONFIG META
 ========================= */
+const META_PADRAO = 200;
 const metas = new Map();
-const META_PADRAO = 100;
+const CATEGORIA_ID = "1501326344586526820";
 
 /* =========================
-   📁 CANAL META (PRIVADO)
+   📁 CANAL META
 ========================= */
 async function getCanalMeta(guild, user) {
   try {
-    const categoria = guild.channels.cache.get("1501326344586526820");
-    if (!categoria) return null;
+    const categoria = guild.channels.cache.get(CATEGORIA_ID);
+
+    if (!categoria) {
+      console.log("❌ Categoria não encontrada");
+      return null;
+    }
 
     const nome = `meta-${user.username}`
       .toLowerCase()
@@ -94,10 +99,11 @@ async function getCanalMeta(guild, user) {
       ]
     });
 
+    console.log("✅ Canal criado:", nome);
     return canal;
 
   } catch (err) {
-    console.error("Erro ao criar canal:", err);
+    console.error(err);
     return null;
   }
 }
@@ -143,11 +149,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
         return interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("👕 PAINEL DE UNIFORME")
-              .setDescription("Clique no botão abaixo")
-          ],
+          embeds: [new EmbedBuilder().setTitle("👕 PAINEL DE UNIFORME")],
           components: [row]
         });
       }
@@ -160,7 +162,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    /* BOTÃO */
     if (interaction.isButton() && interaction.customId === "btn_uniforme") {
 
       const modal = new ModalBuilder()
@@ -169,68 +170,55 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("nome")
-            .setLabel("Nome")
-            .setStyle(TextInputStyle.Short)
+          new TextInputBuilder().setCustomId("nome").setLabel("Nome").setStyle(TextInputStyle.Short)
         ),
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("codigo")
-            .setLabel("Código")
-            .setStyle(TextInputStyle.Short)
+          new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short)
         ),
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("tipo")
-            .setLabel("Masculino ou Feminino")
-            .setStyle(TextInputStyle.Short)
+          new TextInputBuilder().setCustomId("tipo").setLabel("Masculino ou Feminino").setStyle(TextInputStyle.Short)
         )
       );
 
       return interaction.showModal(modal);
     }
 
-    /* MODAL */
-    if (interaction.isModalSubmit()) {
+    if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
 
-      if (interaction.customId === "modal_uniforme") {
+      const nome = interaction.fields.getTextInputValue("nome");
+      const codigo = interaction.fields.getTextInputValue("codigo");
+      const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
 
-        const nome = interaction.fields.getTextInputValue("nome");
-        const codigo = interaction.fields.getTextInputValue("codigo");
-        const tipo = interaction.fields.getTextInputValue("tipo").toLowerCase();
+      const canalID = tipo.startsWith("m")
+        ? CANAL_MASCULINO
+        : CANAL_FEMININO;
 
-        const canalID = tipo.startsWith("m")
-          ? CANAL_MASCULINO
-          : CANAL_FEMININO;
+      let canal;
 
-        let canal;
-
-        try {
-          canal = await client.channels.fetch(canalID);
-        } catch {
-          return interaction.reply({
-            content: "❌ Canal inválido no .env",
-            flags: 64
-          });
-        }
-
-        await canal.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("👕 UNIFORME REGISTRADO")
-              .addFields(
-                { name: "Nome", value: nome },
-                { name: "Código", value: codigo }
-              )
-          ]
-        });
-
+      try {
+        canal = await client.channels.fetch(canalID);
+      } catch {
         return interaction.reply({
-          content: "✅ Enviado!",
+          content: "❌ Canal inválido",
           flags: 64
         });
       }
+
+      await canal.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("👕 UNIFORME REGISTRADO")
+            .addFields(
+              { name: "Nome", value: nome },
+              { name: "Código", value: codigo }
+            )
+        ]
+      });
+
+      return interaction.reply({
+        content: "✅ Enviado!",
+        flags: 64
+      });
     }
 
   } catch (err) {
@@ -239,25 +227,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /* =========================
-   📸 METAS
+   📸 METAS (FIX TOTAL)
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
 
     if (message.author.bot) return;
+
     if (message.channel.id !== CANAL_METAS) return;
 
-    const match = message.content.match(/\d+/);
+    console.log("📩 MSG:", message.content);
 
-    if (!match) {
-      return message.reply("❌ Envie número + imagem");
+    const numeros = message.content.match(/\d+/g);
+
+    if (!numeros) {
+      return message.reply("❌ Envie um número + imagem\nEx: 50");
     }
 
     if (message.attachments.size === 0) {
-      return message.reply("❌ Envie uma imagem");
+      return message.reply("❌ Envie uma imagem junto");
     }
 
-    const quantidade = parseInt(match[0]);
+    const quantidade = parseInt(numeros[0]);
+
     const userId = message.author.id;
 
     const atual = (metas.get(userId) || 0) + quantidade;
@@ -268,7 +260,7 @@ client.on("messageCreate", async (message) => {
     const canal = await getCanalMeta(message.guild, message.author);
 
     if (!canal) {
-      return message.reply("❌ Categoria inválida");
+      return message.reply("❌ Erro ao criar canal");
     }
 
     const imagem = message.attachments.first().url;
@@ -276,7 +268,7 @@ client.on("messageCreate", async (message) => {
     await canal.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("📦 META ENTREGUE")
+          .setTitle("📊 RELATÓRIO DE META")
           .setImage(imagem)
           .addFields(
             { name: "👤 Usuário", value: message.author.username },
@@ -284,7 +276,6 @@ client.on("messageCreate", async (message) => {
             { name: "📊 Total", value: `${atual}`, inline: true },
             { name: "⏳ Falta", value: `${falta}`, inline: true }
           )
-          .setColor(falta === 0 ? 0x00ff00 : 0xff0000)
       ]
     });
 
@@ -292,7 +283,7 @@ client.on("messageCreate", async (message) => {
       await canal.send("🎉 META COMPLETA!");
     }
 
-    message.reply(`✅ Registrado: ${quantidade}`);
+    message.reply(`✅ Registrado ${quantidade}`);
 
   } catch (err) {
     console.error(err);
