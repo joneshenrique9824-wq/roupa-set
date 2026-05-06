@@ -1,5 +1,4 @@
 import "dotenv/config";
-import express from "express";
 import {
   Client,
   GatewayIntentBits,
@@ -8,22 +7,11 @@ import {
   PermissionsBitField
 } from "discord.js";
 
-/* =========================
-   🔧 WEB (ANTI-SIGTERM)
-========================= */
-const app = express();
-app.get("/", (req, res) => res.send("Bot online"));
-app.listen(3000, () => console.log("🌐 Web server ativo"));
-
-/* =========================
-   🔒 PROTEÇÃO
-========================= */
+/* ========================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
-/* =========================
-   🤖 CLIENT
-========================= */
+/* ========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -32,9 +20,7 @@ const client = new Client({
   ]
 });
 
-/* =========================
-   🔐 CONFIG
-========================= */
+/* ========================= */
 const { TOKEN, CANAL_METAS } = process.env;
 
 console.log("🔧 Iniciando...");
@@ -46,11 +32,8 @@ if (!TOKEN || !CANAL_METAS) {
   process.exit(1);
 }
 
-/* =========================
-   ⚙️ CONFIG GERAL
-========================= */
+/* ========================= */
 const META_PADRAO = 200;
-
 const CATEGORIA_LOG_ID = "1501326344586526820";
 const CARGO_LIDER_ID = "1456655598396510215";
 const NOME_CATEGORIA_META = "🏆 METAS CONCLUÍDAS";
@@ -94,9 +77,7 @@ async function getCanalLog(guild, user) {
   });
 }
 
-/* =========================
-   🏆 META (CATEGORIA)
-========================= */
+/* ========================= */
 async function getCategoriaMeta(guild) {
   let categoria = guild.channels.cache.find(
     c => c.name === NOME_CATEGORIA_META && c.type === ChannelType.GuildCategory
@@ -113,9 +94,7 @@ async function getCategoriaMeta(guild) {
 async function criarCanalMeta(guild, user) {
   const categoria = await getCategoriaMeta(guild);
 
-  const nome = `meta-${user.username}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+  const nome = `meta-${user.username}`.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   let canal = guild.channels.cache.find(
     c => c.name === nome && c.parentId === categoria.id
@@ -135,46 +114,17 @@ async function criarCanalMeta(guild, user) {
   });
 }
 
-/* =========================
-   🚀 READY
-========================= */
+/* ========================= */
 client.once("ready", () => {
   console.log(`🔥 ONLINE: ${client.user.tag}`);
 });
 
 /* =========================
-   🎮 INTERAÇÕES (SEM ERRO)
-========================= */
-client.on("interactionCreate", async (interaction) => {
-  try {
-    if (!interaction.isChatInputCommand()) return;
-
-    await interaction.deferReply({ flags: 64 });
-
-    if (interaction.commandName === "meta") {
-      return interaction.editReply("📸 Envie número + imagem no canal de metas");
-    }
-
-    if (interaction.commandName === "painel") {
-      return interaction.editReply("👕 Painel ativo!");
-    }
-
-  } catch (err) {
-    console.error(err);
-
-    if (interaction.deferred) {
-      interaction.editReply("❌ Erro interno");
-    }
-  }
-});
-
-/* =========================
-   📸 SISTEMA DE METAS
+   📸 SISTEMA
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot) return;
-
     if (message.channel.id !== CANAL_METAS) return;
 
     const userId = message.author.id;
@@ -231,11 +181,9 @@ client.on("messageCreate", async (message) => {
 
   } catch (err) {
     console.error(err);
-    message.reply("❌ Erro ao processar");
+    message.reply("❌ Erro");
   }
 });
 
 /* ========================= */
-client.login(TOKEN).catch(err => {
-  console.error("❌ ERRO LOGIN:", err);
-});
+client.login(TOKEN).catch(console.error);
