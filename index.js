@@ -3,12 +3,19 @@ import {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
-  Events,
   ChannelType,
   PermissionsBitField
 } from "discord.js";
 
-/* ========================= */
+/* =========================
+   🔒 PROTEÇÃO
+========================= */
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
+
+/* =========================
+   🤖 CLIENT
+========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -20,10 +27,7 @@ const client = new Client({
 /* =========================
    🔐 CONFIG
 ========================= */
-const {
-  TOKEN,
-  CANAL_METAS
-} = process.env;
+const { TOKEN, CANAL_METAS } = process.env;
 
 if (!TOKEN || !CANAL_METAS) {
   console.log("❌ CONFIG .env incompleta");
@@ -34,7 +38,6 @@ if (!TOKEN || !CANAL_METAS) {
    ⚙️ CONFIG GERAL
 ========================= */
 const META_PADRAO = 200;
-
 const CATEGORIA_LOG_ID = "1501326344586526820";
 const CARGO_LIDER_ID = "1456655598396510215";
 const NOME_CATEGORIA_META = "🏆 METAS CONCLUÍDAS";
@@ -43,18 +46,16 @@ const entregas = new Map();
 const pendentes = new Map();
 
 /* =========================
-   📁 CANAL LOG POR USUÁRIO
+   📁 CANAL LOG
 ========================= */
 async function getCanalLog(guild, user) {
   const categoria = guild.channels.cache.get(CATEGORIA_LOG_ID);
   if (!categoria) {
-    console.log("❌ Categoria de log não encontrada");
+    console.log("❌ Categoria log não encontrada");
     return null;
   }
 
-  const nome = `log-${user.username}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+  const nome = `log-${user.username}`.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   let canal = guild.channels.cache.find(
     c => c.name === nome && c.parentId === categoria.id
@@ -108,9 +109,7 @@ async function getCategoriaMeta(guild) {
 async function criarCanalMeta(guild, user) {
   const categoria = await getCategoriaMeta(guild);
 
-  const nome = `meta-${user.username}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+  const nome = `meta-${user.username}`.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   let canal = guild.channels.cache.find(
     c => c.name === nome && c.parentId === categoria.id
@@ -140,12 +139,27 @@ async function criarCanalMeta(guild, user) {
 }
 
 /* =========================
-   📸 SISTEMA DE METAS
+   🚀 READY
 ========================= */
-client.on(Events.MessageCreate, async (message) => {
+client.once("ready", () => {
+  console.log(`🔥 ONLINE: ${client.user.tag}`);
+});
+
+/* =========================
+   📸 SISTEMA DE METAS (COM DEBUG)
+========================= */
+client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot) return;
-    if (message.channel.id !== CANAL_METAS) return;
+
+    console.log("📩 MSG RECEBIDA:", message.content);
+
+    if (message.channel.id !== CANAL_METAS) {
+      console.log("❌ Canal diferente");
+      return;
+    }
+
+    console.log("✅ Canal correto");
 
     const userId = message.author.id;
 
@@ -179,36 +193,31 @@ client.on(Events.MessageCreate, async (message) => {
       await canalLog.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle("📦 ENTREGA REGISTRADA")
+            .setTitle("📦 ENTREGA")
             .setImage(data.imagem)
             .addFields(
-              { name: "👤 Usuário", value: message.author.username },
-              { name: "📥 Quantidade", value: `${data.numero}` },
-              { name: "📊 Progresso", value: `${total}/${META_PADRAO}` }
+              { name: "Usuário", value: message.author.username },
+              { name: "Quantidade", value: `${data.numero}` },
+              { name: "Progresso", value: `${total}/${META_PADRAO}` }
             )
         ]
       });
 
       if (total >= META_PADRAO) {
         const canalMeta = await criarCanalMeta(message.guild, message.author);
-
         await canalMeta.send(`🏆 ${message.author} bateu a meta!`);
       }
 
       pendentes.delete(userId);
 
-      return message.reply(`✅ Entrega registrada (${total}/${META_PADRAO})`);
+      return message.reply(`✅ Registrado (${total}/${META_PADRAO})`);
     }
 
   } catch (err) {
-    console.error(err);
-    message.reply("❌ Erro ao processar");
+    console.error("ERRO:", err);
+    message.reply("❌ Erro geral");
   }
 });
 
 /* ========================= */
-client.once(Events.ClientReady, () => {
-  console.log(`🔥 ONLINE: ${client.user.tag}`);
-});
-
 client.login(TOKEN);
