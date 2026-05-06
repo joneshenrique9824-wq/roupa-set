@@ -4,12 +4,9 @@ import {
   GatewayIntentBits,
   EmbedBuilder,
   ChannelType,
-  PermissionsBitField
+  PermissionsBitField,
+  Events
 } from "discord.js";
-
-/* ========================= */
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
 
 /* ========================= */
 const client = new Client({
@@ -36,25 +33,34 @@ if (!TOKEN || !CANAL_METAS) {
 const META_PADRAO = 200;
 const CATEGORIA_LOG_ID = "1501326344586526820";
 const CARGO_LIDER_ID = "1456655598396510215";
-const NOME_CATEGORIA_META = "🏆 METAS CONCLUÍDAS";
 
 const entregas = new Map();
 const pendentes = new Map();
 
-/* =========================
-   📁 CANAL LOG
-========================= */
+/* ========================= */
 async function getCanalLog(guild, user) {
-  const categoria = guild.channels.cache.get(CATEGORIA_LOG_ID);
-  if (!categoria) return null;
+  console.log("📁 Criando/Buscando canal...");
 
-  const nome = `log-${user.username}`.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const categoria = guild.channels.cache.get(CATEGORIA_LOG_ID);
+  if (!categoria) {
+    console.log("❌ Categoria NÃO encontrada:", CATEGORIA_LOG_ID);
+    return null;
+  }
+
+  const nome = `log-${user.username}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 
   let canal = guild.channels.cache.find(
     c => c.name === nome && c.parentId === categoria.id
   );
 
-  if (canal) return canal;
+  if (canal) {
+    console.log("✅ Canal já existe");
+    return canal;
+  }
+
+  console.log("🆕 Criando canal novo...");
 
   return await guild.channels.create({
     name: nome,
@@ -78,60 +84,32 @@ async function getCanalLog(guild, user) {
 }
 
 /* ========================= */
-async function getCategoriaMeta(guild) {
-  let categoria = guild.channels.cache.find(
-    c => c.name === NOME_CATEGORIA_META && c.type === ChannelType.GuildCategory
-  );
-
-  if (categoria) return categoria;
-
-  return await guild.channels.create({
-    name: NOME_CATEGORIA_META,
-    type: ChannelType.GuildCategory
-  });
-}
-
-async function criarCanalMeta(guild, user) {
-  const categoria = await getCategoriaMeta(guild);
-
-  const nome = `meta-${user.username}`.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-  let canal = guild.channels.cache.find(
-    c => c.name === nome && c.parentId === categoria.id
-  );
-
-  if (canal) return canal;
-
-  return await guild.channels.create({
-    name: nome,
-    type: ChannelType.GuildText,
-    parent: categoria.id,
-    permissionOverwrites: [
-      { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-      { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-      { id: CARGO_LIDER_ID, allow: [PermissionsBitField.Flags.ViewChannel] }
-    ]
-  });
-}
-
-/* ========================= */
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
   console.log(`🔥 ONLINE: ${client.user.tag}`);
 });
 
-/* =========================
-   📸 SISTEMA
-========================= */
+/* ========================= */
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot) return;
-    if (message.channel.id !== CANAL_METAS) return;
+
+    console.log("📩 MSG:", message.content);
+
+    if (message.channel.id !== CANAL_METAS) {
+      console.log("❌ Canal errado:", message.channel.id);
+      return;
+    }
+
+    console.log("✅ Canal correto");
 
     const userId = message.author.id;
 
     const numeroMatch = message.content.match(/\d+/);
     const temNumero = numeroMatch !== null;
     const temImagem = message.attachments.size > 0;
+
+    console.log("🔎 Numero:", temNumero);
+    console.log("🖼️ Imagem:", temImagem);
 
     let data = pendentes.get(userId) || { numero: null, imagem: null };
 
@@ -150,11 +128,17 @@ client.on("messageCreate", async (message) => {
 
     if (data.numero && data.imagem) {
 
+      console.log("🚀 Processando entrega...");
+
       const total = (entregas.get(userId) || 0) + 1;
       entregas.set(userId, total);
 
       const canalLog = await getCanalLog(message.guild, message.author);
-      if (!canalLog) return message.reply("❌ Erro ao criar canal");
+
+      if (!canalLog) {
+        console.log("❌ Falha ao criar canal");
+        return message.reply("❌ Erro ao criar canal");
+      }
 
       await canalLog.send({
         embeds: [
@@ -169,21 +153,18 @@ client.on("messageCreate", async (message) => {
         ]
       });
 
-      if (total >= META_PADRAO) {
-        const canalMeta = await criarCanalMeta(message.guild, message.author);
-        await canalMeta.send(`🏆 ${message.author} bateu a meta!`);
-      }
-
       pendentes.delete(userId);
 
       return message.reply(`✅ Registrado (${total}/${META_PADRAO})`);
     }
 
   } catch (err) {
-    console.error(err);
-    message.reply("❌ Erro");
+    console.error("❌ ERRO:", err);
+    message.reply("❌ Erro geral");
   }
 });
 
 /* ========================= */
-client.login(TOKEN).catch(console.error);
+client.login(TOKEN).catch(err => {
+  console.error("❌ ERRO LOGIN:", err);
+});
