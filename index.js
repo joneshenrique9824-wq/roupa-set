@@ -12,7 +12,8 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
-  Events
+  Events,
+  ChannelType
 } from "discord.js";
 import vision from "@google-cloud/vision";
 
@@ -23,7 +24,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -42,7 +44,7 @@ const {
 const CANAL_METAS = "1501326344586526820";
 
 /* =========================
-   🧠 IA GOOGLE (RAILWAY)
+   🧠 GOOGLE VISION
 ========================= */
 const visionClient = new vision.ImageAnnotatorClient({
   credentials: JSON.parse(GOOGLE_CREDENTIALS || "{}")
@@ -51,9 +53,9 @@ const visionClient = new vision.ImageAnnotatorClient({
 /* =========================
    👥 CARGOS
 ========================= */
-const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "1456655598396510213";
-const CARGO_LIDER = process.env.CARGO_LIDER || "1456655598396510215";
-const CARGO_GERENTE = process.env.CARGO_GERENTE || "1456655598530723956";
+const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "";
+const CARGO_LIDER = process.env.CARGO_LIDER || "";
+const CARGO_GERENTE = process.env.CARGO_GERENTE || "";
 
 const cargos = {
   LIDERANCA: [],
@@ -65,21 +67,20 @@ const cargos = {
    🎯 METAS
 ========================= */
 const metasPlayer = {};
-const META_TOTAL = 1000;
 
 /* =========================
-   🔒 PERMISSÕES
+   🔒 PERMISSÃO
 ========================= */
 const temPermissao = (interaction) => {
   return (
-    interaction.member?.roles?.cache?.has(CARGO_MEMBRO) ||
-    interaction.member?.roles?.cache?.has(CARGO_LIDER) ||
-    interaction.member?.roles?.cache?.has(CARGO_GERENTE)
+    interaction.member.roles.cache.has(CARGO_MEMBRO) ||
+    interaction.member.roles.cache.has(CARGO_LIDER) ||
+    interaction.member.roles.cache.has(CARGO_GERENTE)
   );
 };
 
 /* =========================
-   🧠 EMBED HIERARQUIA
+   📊 EMBED
 ========================= */
 function criarEmbedCargos() {
   const f = (l) => l.length ? l.map(id => `• <@${id}>`).join("\n") : "• (vazio)";
@@ -96,16 +97,17 @@ ${f(cargos.MEMBROS)}
 }
 
 /* =========================
-   🏗️ CANAL PLAYER
+   📁 CANAL PLAYER
 ========================= */
 async function pegarOuCriarCanalPlayer(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
+
   let canal = guild.channels.cache.find(c => c.name === nome);
   if (canal) return canal;
 
   return await guild.channels.create({
     name: nome,
-    type: 0
+    type: ChannelType.GuildText
   });
 }
 
@@ -116,52 +118,25 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Painel de uniformes"),
+    .setDescription("Painel de uniforme"),
 
   new SlashCommandBuilder()
     .setName("quadro")
-    .setDescription("Hierarquia"),
-
-  new SlashCommandBuilder()
-    .setName("addcargo")
-    .setDescription("Adicionar cargo")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("Cargo")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("removercargo")
-    .setDescription("Remover cargo")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("Cargo")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário")
-        .setRequired(true)
-    ),
+    .setDescription("Ver hierarquia"),
 
   new SlashCommandBuilder()
     .setName("meta")
-    .setDescription("Metas com IA")
+    .setDescription("Enviar metas com IA")
+
 ];
 
 /* =========================
-   🚀 REGISTER
+   🚀 REGISTRAR COMANDOS
 ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
-  console.log(`🔥 ${client.user.tag}`);
+  console.log(`🔥 ${client.user.tag} ONLINE`);
 
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
@@ -174,8 +149,10 @@ client.once(Events.ClientReady, async () => {
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // UNIFORME
-  if (interaction.isChatInputCommand() && interaction.commandName === "painel") {
+  if (!interaction.isChatInputCommand()) return;
+
+  /* ================= PAINEL ================= */
+  if (interaction.commandName === "painel") {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -190,11 +167,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
+  /* ================= QUADRO ================= */
+  if (interaction.commandName === "quadro") {
+    return interaction.reply({
+      embeds: [criarEmbedCargos()]
+    });
+  }
+
+  /* ================= META ================= */
+  if (interaction.commandName === "meta") {
+    return interaction.reply({
+      embeds: [new EmbedBuilder().setTitle("📸 Envie print com ex: 200x minério")]
+    });
+  }
+
+});
+
+/* =========================
+   🎯 BOTÕES / MODAL
+========================= */
+client.on(Events.InteractionCreate, async (interaction) => {
+
   if (interaction.isButton() && interaction.customId === "uniforme_btn") {
 
     const modal = new ModalBuilder()
       .setCustomId("modal_uniforme")
-      .setTitle("Uniforme");
+      .setTitle("Registrar Uniforme");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
@@ -204,7 +202,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new TextInputBuilder().setCustomId("codigo").setLabel("Código").setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("tipo").setLabel("Masculino/Feminino").setStyle(TextInputStyle.Short)
+        new TextInputBuilder().setCustomId("tipo").setLabel("Masculino ou Feminino").setStyle(TextInputStyle.Short)
       )
     );
 
@@ -224,7 +222,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await canal.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("👕 UNIFORME")
+          .setTitle("👕 UNIFORME REGISTRADO")
           .addFields(
             { name: "Nome", value: nome },
             { name: "Código", value: codigo }
@@ -235,22 +233,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.reply({ content: "✅ Enviado!", ephemeral: true });
   }
 
-  // META
-  if (interaction.isChatInputCommand() && interaction.commandName === "meta") {
-    return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("🎯 Envie print (ex: 200x)")],
-    });
-  }
-
-  // HIERARQUIA
-  if (interaction.isChatInputCommand() && interaction.commandName === "quadro") {
-    return interaction.reply({ embeds: [criarEmbedCargos()] });
-  }
-
 });
 
 /* =========================
-   📸 IA META
+   🧠 IA META (OCR)
 ========================= */
 client.on("messageCreate", async (message) => {
 
@@ -264,12 +250,15 @@ client.on("messageCreate", async (message) => {
     const [result] = await visionClient.textDetection(att.url);
     const texto = result.fullTextAnnotation?.text?.toLowerCase() || "";
 
-    const match = texto.match(/(\d+)\s*x/);
-    if (!match) return message.reply("❌ Não detectei número");
+    const match = texto.match(/(\d+)\s*x/i);
+
+    if (!match) {
+      return message.reply("❌ Não detectei número (ex: 200x)");
+    }
 
     const qtd = parseInt(match[1]);
-
     const id = message.author.id;
+
     metasPlayer[id] = (metasPlayer[id] || 0) + qtd;
 
     const canal = await pegarOuCriarCanalPlayer(message.guild, message.author);
@@ -277,7 +266,7 @@ client.on("messageCreate", async (message) => {
     await canal.send({
       embeds: [
         new EmbedBuilder()
-          .setTitle("🧠 META IA")
+          .setTitle("🧠 META DETECTADA")
           .addFields(
             { name: "Quantidade", value: `${qtd}`, inline: true },
             { name: "Total", value: `${metasPlayer[id]}`, inline: true }
@@ -286,11 +275,13 @@ client.on("messageCreate", async (message) => {
       ]
     });
 
-    message.reply(`🧠 Detectado: ${qtd}`);
+    message.reply(`✅ Detectado: ${qtd}`);
+
   } catch (err) {
     console.error(err);
-    message.reply("❌ erro IA");
+    message.reply("❌ Erro na IA");
   }
+
 });
 
 /* ========================= */
