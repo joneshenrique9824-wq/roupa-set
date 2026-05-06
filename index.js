@@ -37,7 +37,18 @@ const {
   META_CATEGORIA
 } = process.env;
 
-/* ========================= 📦 META SYSTEM ========================= */
+/* ========================= 🔰 CARGOS ========================= */
+const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "1456655598396510213";
+const CARGO_LIDER = process.env.CARGO_LIDER || "1456655598396510215";
+const CARGO_GERENTE = process.env.CARGO_GERENTE || "1456655598530723956";
+
+/* ========================= 📦 MEMÓRIA ========================= */
+const cargos = { LIDERANCA: [], GERENTE: [], MEMBROS: [] };
+const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
+
+const cooldown = new Set();
+
+/* ========================= 📊 META SYSTEM (NOVO) ========================= */
 const metas = {};
 
 const META_DIARIA = {
@@ -66,7 +77,7 @@ function initUser(id) {
   }
 }
 
-/* ========================= 📁 CRIAR CANAL ========================= */
+/* ========================= 📁 CRIAR CANAL META ========================= */
 async function criarCanalUsuario(guild, user) {
   const nome = `meta-${user.username}`.toLowerCase();
 
@@ -94,144 +105,165 @@ async function criarCanalUsuario(guild, user) {
   return canal.id;
 }
 
+/* ========================= 🏆 RANKING ========================= */
+function ranking() {
+  return Object.entries(metas)
+    .map(([id, m]) => ({
+      id,
+      total: m.kevlar + m.ferro
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+}
+
 /* ========================= 📜 COMANDOS ========================= */
 const commands = [
+  new SlashCommandBuilder().setName("painel").setDescription("Abrir painel de uniformes"),
+  new SlashCommandBuilder().setName("quadro").setDescription("Ver hierarquia"),
   new SlashCommandBuilder()
-    .setName("painel")
-    .setDescription("Abrir painel"),
+    .setName("addcargo")
+    .setDescription("Adicionar cargo")
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("removercargo")
+    .setDescription("Remover cargo")
+    .addStringOption(o => o.setName("cargo").setRequired(true))
+    .addUserOption(o => o.setName("pessoa").setRequired(true)),
 
-  new SlashCommandBuilder()
-    .setName("meta")
-    .setDescription("Ver sua meta diária"),
-
-  new SlashCommandBuilder()
-    .setName("quadro")
-    .setDescription("Ver hierarquia")
+  // NOVO
+  new SlashCommandBuilder().setName("meta").setDescription("Ver sua meta"),
+  new SlashCommandBuilder().setName("rank").setDescription("Ranking de farm")
 ];
 
-/* ========================= 🚀 REGISTRO ========================= */
+/* ========================= 🚀 REGISTER ========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
   console.log(`🔥 Logado como ${client.user.tag}`);
 
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-    body: commands.map((c) => c.toJSON())
+    body: commands.map(c => c.toJSON())
   });
 
   console.log("✅ Comandos registrados!");
 });
 
-/* ========================= 📸 META SYSTEM (PRINT + CANAL) ========================= */
+/* ========================= 📸 META + PRINT ========================= */
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== META_CANAL) return;
-  if (!message.attachments.size) {
+
+  const userId = message.author.id;
+  initUser(userId);
+
+  const content = message.content.toLowerCase();
+
+  const temPrint =
+    message.attachments.size > 0 ||
+    message.embeds.length > 0 ||
+    message.content.includes("http");
+
+  if (!temPrint) {
     return message.reply("❌ Envie o PRINT junto da meta!");
   }
 
-  const content = message.content.toLowerCase();
-  const userId = message.author.id;
-
-  initUser(userId);
+  let imagem = message.attachments.first()?.url || message.embeds[0]?.image?.url || null;
 
   const matchKevlar = content.match(/(\d+)\s*kevlar/);
   const matchFerro = content.match(/(\d+)\s*(ferro|minério|minerio)/);
 
   if (!matchKevlar && !matchFerro) {
-    return message.reply("❌ Use: `30 kevlar` ou `200 ferro` + print");
+    return message.reply("❌ Use: 30 kevlar ou 200 ferro + print");
   }
 
   const guild = message.guild;
 
-  // cria canal se não existir
   if (!metas[userId].canalId) {
     metas[userId].canalId = await criarCanalUsuario(guild, message.author);
   }
 
   const canal = await guild.channels.fetch(metas[userId].canalId);
 
-  let ganho = [];
+  let ganhos = [];
 
   if (matchKevlar) {
-    const qtd = parseInt(matchKevlar[1]);
-    metas[userId].kevlar += qtd;
-    ganho.push(`🦺 +${qtd} Kevlar`);
+    metas[userId].kevlar += parseInt(matchKevlar[1]);
+    ganhos.push(`🦺 Kevlar +${matchKevlar[1]}`);
   }
 
   if (matchFerro) {
-    const qtd = parseInt(matchFerro[1]);
-    metas[userId].ferro += qtd;
-    ganho.push(`⛏️ +${qtd} Ferro`);
+    metas[userId].ferro += parseInt(matchFerro[1]);
+    ganhos.push(`⛏️ Ferro +${matchFerro[1]}`);
   }
 
   const embed = new EmbedBuilder()
-    .setTitle("📊 RELATÓRIO DIÁRIO")
+    .setTitle("📊 RELATÓRIO META")
     .setColor("#00ff99")
-    .setDescription(ganho.join("\n"))
+    .setDescription(ganhos.join("\n"))
     .addFields(
-      {
-        name: "🦺 Kevlar",
-        value: `${metas[userId].kevlar}/${META_DIARIA.KEVLAR}`,
-        inline: true
-      },
-      {
-        name: "⛏️ Ferro",
-        value: `${metas[userId].ferro}/${META_DIARIA.FERRO}`,
-        inline: true
-      }
+      { name: "🦺 Kevlar", value: `${metas[userId].kevlar}/30`, inline: true },
+      { name: "⛏️ Ferro", value: `${metas[userId].ferro}/200`, inline: true },
+      { name: "📈 Total", value: `${metas[userId].kevlar + metas[userId].ferro}`, inline: true }
     )
-    .setImage(message.attachments.first().url)
-    .setFooter({ text: message.author.tag })
-    .setTimestamp();
+    .setFooter({ text: message.author.tag });
+
+  if (imagem) embed.setImage(imagem);
 
   canal.send({ embeds: [embed] });
 
-  message.reply("✅ Meta registrada com sucesso!");
+  message.reply("✅ Meta registrada!");
 });
 
-/* ========================= 📊 META COMANDO ========================= */
+/* ========================= 🎮 INTERAÇÕES ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  const cargo = interaction.options.getString("cargo");
+  const user = interaction.options.getUser("pessoa");
+
+  /* ===== META ===== */
   if (interaction.commandName === "meta") {
-    const id = interaction.user.id;
-    initUser(id);
+    initUser(interaction.user.id);
 
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setTitle("📊 SUA META DIÁRIA")
+          .setTitle("📊 SUA META")
           .setColor("#ffaa00")
           .addFields(
-            {
-              name: "🦺 Kevlar",
-              value: `${metas[id].kevlar}/${META_DIARIA.KEVLAR}`,
-              inline: true
-            },
-            {
-              name: "⛏️ Ferro",
-              value: `${metas[id].ferro}/${META_DIARIA.FERRO}`,
-              inline: true
-            }
+            { name: "Kevlar", value: `${metas[interaction.user.id].kevlar}/30`, inline: true },
+            { name: "Ferro", value: `${metas[interaction.user.id].ferro}/200`, inline: true }
           )
       ],
-      ephemeral: true
+      flags: 64
     });
+  }
+
+  /* ===== RANK ===== */
+  if (interaction.commandName === "rank") {
+    const top = ranking();
+
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("🏆 RANKING")
+          .setColor("#ffd700")
+          .setDescription(
+            top.map((u, i) => `**${i + 1}.** <@${u.id}> - ${u.total}`).join("\n")
+          )
+      ],
+      flags: 64
+    });
+  }
+
+  /* ===== RESTANTE DO SEU BOT ORIGINAL ===== */
+  if (interaction.commandName === "quadro") {
+    return interaction.reply({ content: "📊 Hierarquia ativa", flags: 64 });
   }
 
   if (interaction.commandName === "painel") {
-    return interaction.reply({
-      content: "📦 Painel ativo (customizável depois)",
-      ephemeral: true
-    });
-  }
-
-  if (interaction.commandName === "quadro") {
-    return interaction.reply({
-      content: "📊 Sistema de hierarquia ativo",
-      ephemeral: true
-    });
+    return interaction.reply({ content: "📦 Painel aberto", flags: 64 });
   }
 });
 
