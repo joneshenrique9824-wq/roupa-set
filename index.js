@@ -52,15 +52,13 @@ if (!TOKEN || !CLIENT_ID || !GUILD_ID || !CANAL_METAS) {
 }
 
 /* =========================
-   🎯 CONFIG META
+   📁 CONFIG
 ========================= */
-const META_PADRAO = 200;
-const metas = new Map();
-const pendentes = new Map();
 const CATEGORIA_ID = "1501326344586526820";
+const pendentes = new Map();
 
 /* =========================
-   📁 CANAL META
+   📁 CANAL POR USUÁRIO
 ========================= */
 async function getCanalMeta(guild, user) {
   try {
@@ -97,7 +95,7 @@ async function getCanalMeta(guild, user) {
     });
 
   } catch (err) {
-    console.error("Erro canal:", err);
+    console.error(err);
     return null;
   }
 }
@@ -110,9 +108,6 @@ const commands = [
   { name: "meta", description: "Sistema de metas" }
 ];
 
-/* =========================
-   🚀 REGISTER
-========================= */
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once(Events.ClientReady, async () => {
@@ -150,7 +145,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === "meta") {
         return interaction.reply({
-          content: "📸 Envie número e/ou imagem no canal de metas",
+          content: "📸 Envie número e imagem no canal de metas",
           flags: 64
         });
       }
@@ -215,7 +210,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /* =========================
-   📸 METAS AUTOMÁTICAS
+   📸 METAS SEM SOMA
 ========================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -246,42 +241,29 @@ client.on("messageCreate", async (message) => {
 
     if (data.numero && data.imagem) {
 
-      const quantidade = data.numero;
-
-      const atual = (metas.get(userId) || 0) + quantidade;
-      metas.set(userId, atual);
-
-      const falta = Math.max(META_PADRAO - atual, 0);
-
       const canal = await getCanalMeta(message.guild, message.author);
       if (!canal) return message.reply("❌ Erro ao criar canal");
 
       await canal.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle("📊 RELATÓRIO DE META")
+            .setTitle("📦 ENTREGA REGISTRADA")
             .setImage(data.imagem)
             .addFields(
               { name: "👤 Usuário", value: message.author.username },
-              { name: "📥 Entregue", value: `${quantidade}`, inline: true },
-              { name: "📊 Total", value: `${atual}`, inline: true },
-              { name: "⏳ Falta", value: `${falta}`, inline: true }
+              { name: "📥 Quantidade", value: `${data.numero}` }
             )
         ]
       });
 
-      if (falta === 0) {
-        await canal.send("🎉 META COMPLETA!");
-      }
-
       pendentes.delete(userId);
 
-      return message.reply(`✅ Meta registrada: ${quantidade}`);
+      return message.reply("✅ Entrega registrada!");
     }
 
   } catch (err) {
     console.error(err);
-    message.reply("❌ Erro ao processar meta");
+    message.reply("❌ Erro ao processar");
   }
 });
 
