@@ -16,7 +16,7 @@ import {
   ChannelType
 } from "discord.js";
 
-import Tesseract from "tesseract.js";
+import { createWorker } from "tesseract.js";
 
 /* =========================
    🤖 BOT
@@ -92,42 +92,38 @@ client.once(Events.ClientReady, async () => {
 });
 
 /* =========================
-   👕 INTERAÇÕES (UNIFORME)
+   🎮 INTERAÇÕES (TUDO JUNTO)
 ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  if (!interaction.isChatInputCommand()) return;
+  // 📜 COMANDOS
+  if (interaction.isChatInputCommand()) {
 
-  if (interaction.commandName === "painel") {
+    if (interaction.commandName === "painel") {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("uniforme_btn")
+          .setLabel("Registrar Uniforme")
+          .setStyle(ButtonStyle.Primary)
+      );
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("uniforme_btn")
-        .setLabel("Registrar Uniforme")
-        .setStyle(ButtonStyle.Primary)
-    );
+      return interaction.reply({
+        embeds: [new EmbedBuilder().setTitle("👕 PAINEL UNIFORME")],
+        components: [row]
+      });
+    }
 
-    return interaction.reply({
-      embeds: [new EmbedBuilder().setTitle("👕 PAINEL UNIFORME")],
-      components: [row]
-    });
+    if (interaction.commandName === "meta") {
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("📸 Envie uma imagem com número (ex: 200x minério)")
+        ]
+      });
+    }
   }
 
-  if (interaction.commandName === "meta") {
-    return interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("📸 Envie uma imagem com número (ex: 200x minério)")
-      ]
-    });
-  }
-});
-
-/* =========================
-   🧾 MODAL UNIFORME
-========================= */
-client.on(Events.InteractionCreate, async (interaction) => {
-
+  // 🔘 BOTÃO
   if (interaction.isButton() && interaction.customId === "uniforme_btn") {
 
     const modal = new ModalBuilder()
@@ -158,6 +154,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
+  // 🧾 MODAL
   if (interaction.isModalSubmit() && interaction.customId === "modal_uniforme") {
 
     const nome = interaction.fields.getTextInputValue("nome");
@@ -181,10 +178,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     return interaction.reply({ content: "✅ Registrado!", ephemeral: true });
   }
+
 });
 
 /* =========================
-   🧠 OCR REAL (LEITURA DA FOTO)
+   🧠 OCR REAL (IMAGEM)
 ========================= */
 client.on("messageCreate", async (message) => {
 
@@ -196,14 +194,13 @@ client.on("messageCreate", async (message) => {
 
   try {
 
-    // 🔥 OCR REAL (LEITURA DA IMAGEM)
-    const result = await Tesseract.recognize(
-      att.url,
-      "eng",
-      { logger: m => console.log(m.status, m.progress) }
-    );
+    const worker = await createWorker("eng");
 
-    const texto = result.data.text.toLowerCase();
+    const { data: { text } } = await worker.recognize(att.url);
+
+    await worker.terminate();
+
+    const texto = text.toLowerCase();
 
     console.log("🧠 TEXTO LIDO:", texto);
 
