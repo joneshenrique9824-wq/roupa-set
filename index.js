@@ -17,7 +17,7 @@ import {
   PermissionsBitField
 } from "discord.js";
 
-/* ========================= 🤖 CLIENT ========================= */
+/* ========================= 🤖 BOT ========================= */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -42,13 +42,11 @@ const CARGO_MEMBRO = process.env.CARGO_MEMBRO || "1456655598396510213";
 const CARGO_LIDER = process.env.CARGO_LIDER || "1456655598396510215";
 const CARGO_GERENTE = process.env.CARGO_GERENTE || "1456655598530723956";
 
-/* ========================= 📦 MEMÓRIA ========================= */
+/* ========================= 📦 SISTEMA CARGOS ========================= */
 const cargos = { LIDERANCA: [], GERENTE: [], MEMBROS: [] };
 const cargosValidos = ["LIDERANCA", "GERENTE", "MEMBROS"];
 
-const cooldown = new Set();
-
-/* ========================= 📊 META SYSTEM ========================= */
+/* ========================= 📊 META POR PLAYER ========================= */
 const metas = {};
 
 const META_DIARIA = {
@@ -77,12 +75,12 @@ function initUser(id) {
   }
 }
 
-/* ========================= 📁 CANAL META ========================= */
+/* ========================= 📁 CRIAR CANAL DO PLAYER ========================= */
 async function criarCanalUsuario(guild, user) {
-  const nome = `meta-${user.username}`.toLowerCase();
+  const name = `meta-${user.username}`.toLowerCase();
 
-  return await guild.channels.create({
-    name: nome,
+  const canal = await guild.channels.create({
+    name,
     type: ChannelType.GuildText,
     parent: META_CATEGORIA,
     permissionOverwrites: [
@@ -100,7 +98,9 @@ async function criarCanalUsuario(guild, user) {
         ]
       }
     ]
-  }).then(c => c.id);
+  });
+
+  return canal.id;
 }
 
 /* ========================= 🏆 RANKING ========================= */
@@ -114,43 +114,15 @@ function ranking() {
     .slice(0, 5);
 }
 
-/* ========================= 📜 COMANDOS (SEM ERROS) ========================= */
+/* ========================= 📜 SLASH COMMANDS ========================= */
 const commands = [
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Abrir painel de uniformes"),
+    .setDescription("Abrir painel"),
 
   new SlashCommandBuilder()
     .setName("quadro")
     .setDescription("Ver hierarquia"),
-
-  new SlashCommandBuilder()
-    .setName("addcargo")
-    .setDescription("Adicionar cargo ao usuário")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("LIDERANCA / GERENTE / MEMBROS")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário alvo")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("removercargo")
-    .setDescription("Remover cargo do usuário")
-    .addStringOption(o =>
-      o.setName("cargo")
-        .setDescription("LIDERANCA / GERENTE / MEMBROS")
-        .setRequired(true)
-    )
-    .addUserOption(o =>
-      o.setName("pessoa")
-        .setDescription("Usuário alvo")
-        .setRequired(true)
-    ),
 
   new SlashCommandBuilder()
     .setName("meta")
@@ -158,7 +130,27 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("rank")
-    .setDescription("Ranking de farm")
+    .setDescription("Ranking de farm"),
+
+  new SlashCommandBuilder()
+    .setName("addcargo")
+    .setDescription("Adicionar cargo")
+    .addStringOption(o =>
+      o.setName("cargo").setDescription("Cargo").setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa").setDescription("Usuário").setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("removercargo")
+    .setDescription("Remover cargo")
+    .addStringOption(o =>
+      o.setName("cargo").setDescription("Cargo").setRequired(true)
+    )
+    .addUserOption(o =>
+      o.setName("pessoa").setDescription("Usuário").setRequired(true)
+    )
 ];
 
 /* ========================= 🚀 REGISTER ========================= */
@@ -174,7 +166,7 @@ client.once(Events.ClientReady, async () => {
   console.log("✅ Comandos registrados!");
 });
 
-/* ========================= 📸 META + PRINT ========================= */
+/* ========================= 📸 META SYSTEM ========================= */
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== META_CANAL) return;
@@ -193,20 +185,21 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply("❌ Envie o PRINT junto da meta!");
   }
 
-  const imagem =
+  const image =
     message.attachments.first()?.url ||
     message.embeds[0]?.image?.url ||
     null;
 
-  const matchKevlar = content.match(/(\d+)\s*kevlar/);
-  const matchFerro = content.match(/(\d+)\s*(ferro|minério|minerio)/);
+  const kevlar = content.match(/(\d+)\s*kevlar/);
+  const ferro = content.match(/(\d+)\s*(ferro|minério|minerio)/);
 
-  if (!matchKevlar && !matchFerro) {
-    return message.reply("❌ Use: 30 kevlar ou 200 ferro + print");
+  if (!kevlar && !ferro) {
+    return message.reply("❌ Ex: 30 kevlar ou 200 ferro + print");
   }
 
   const guild = message.guild;
 
+  /* ================= CANAL INDIVIDUAL ================= */
   if (!metas[userId].canalId) {
     metas[userId].canalId = await criarCanalUsuario(guild, message.author);
   }
@@ -215,50 +208,63 @@ client.on(Events.MessageCreate, async (message) => {
 
   let ganhos = [];
 
-  if (matchKevlar) {
-    metas[userId].kevlar += parseInt(matchKevlar[1]);
-    ganhos.push(`🦺 Kevlar +${matchKevlar[1]}`);
+  if (kevlar) {
+    metas[userId].kevlar += parseInt(kevlar[1]);
+    ganhos.push(`🦺 Kevlar +${kevlar[1]}`);
   }
 
-  if (matchFerro) {
-    metas[userId].ferro += parseInt(matchFerro[1]);
-    ganhos.push(`⛏️ Ferro +${matchFerro[1]}`);
+  if (ferro) {
+    metas[userId].ferro += parseInt(ferro[1]);
+    ganhos.push(`⛏️ Ferro +${ferro[1]}`);
   }
 
   const embed = new EmbedBuilder()
-    .setTitle("📊 RELATÓRIO META")
+    .setTitle("📊 RELATÓRIO DO PLAYER")
     .setColor("#00ff99")
     .setDescription(ganhos.join("\n"))
     .addFields(
-      { name: "🦺 Kevlar", value: `${metas[userId].kevlar}/${META_DIARIA.KEVLAR}`, inline: true },
-      { name: "⛏️ Ferro", value: `${metas[userId].ferro}/${META_DIARIA.FERRO}`, inline: true },
-      { name: "📈 Total", value: `${metas[userId].kevlar + metas[userId].ferro}`, inline: true }
+      {
+        name: "🦺 Kevlar",
+        value: `${metas[userId].kevlar}/${META_DIARIA.KEVLAR}`,
+        inline: true
+      },
+      {
+        name: "⛏️ Ferro",
+        value: `${metas[userId].ferro}/${META_DIARIA.FERRO}`,
+        inline: true
+      },
+      {
+        name: "📈 Total",
+        value: `${metas[userId].kevlar + metas[userId].ferro}`,
+        inline: true
+      }
     )
     .setFooter({ text: message.author.tag });
 
-  if (imagem) embed.setImage(imagem);
+  if (image) embed.setImage(image);
 
   canal.send({ embeds: [embed] });
 
-  message.reply("✅ Meta registrada!");
+  message.reply("✅ Meta registrada com sucesso!");
 });
 
 /* ========================= 🎮 INTERAÇÕES ========================= */
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  const id = interaction.user.id;
+  initUser(id);
+
   /* ===== META ===== */
   if (interaction.commandName === "meta") {
-    initUser(interaction.user.id);
-
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("📊 SUA META")
           .setColor("#ffaa00")
           .addFields(
-            { name: "Kevlar", value: `${metas[interaction.user.id].kevlar}/30`, inline: true },
-            { name: "Ferro", value: `${metas[interaction.user.id].ferro}/200`, inline: true }
+            { name: "Kevlar", value: `${metas[id].kevlar}/30`, inline: true },
+            { name: "Ferro", value: `${metas[id].ferro}/200`, inline: true }
           )
       ],
       flags: 64
